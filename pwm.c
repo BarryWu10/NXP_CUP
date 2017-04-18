@@ -26,7 +26,7 @@ static volatile unsigned int PWMTick = 0;
  * @param Frequency (~1000 Hz to 20000 Hz)
  * @param dir: 1 for C4 active, else C3 active 
  */
-void SetServoDutyCycle(float DutyCycle, unsigned int Frequency)
+void SetServoDutyCycle(unsigned int DutyCycle, unsigned int Frequency)
 {
 	// Calculate the new cutoff value
 	uint16_t mod = (uint16_t) (((CLOCK/(Frequency*128)) * DutyCycle) / 100);
@@ -37,16 +37,16 @@ void SetServoDutyCycle(float DutyCycle, unsigned int Frequency)
 	FTM3_MOD = (CLOCK/(Frequency*128)); //changed
 }
 
-void SetMotorDutyCycle(unsigned int leftDutyCycle, unsigned int rightDutyCycle, unsigned int Frequency, int dir)
+void SetMotorDutyCycle(unsigned int DutyCycle, unsigned int Frequency, int dir)
 {
 	// Calculate the new cutoff value
-	uint16_t mod_L = (uint16_t) (((CLOCK/Frequency) * leftDutyCycle) / 100);
-	uint16_t mod_R = (uint16_t) (((CLOCK/Frequency) * rightDutyCycle) / 100);
+	uint16_t mod = (uint16_t) (((CLOCK/Frequency) * DutyCycle) / 100);
+  
 	// Set outputs 
 	if(dir==1){
-    {FTM0_C3V = mod_L; FTM0_C2V=0;FTM0_C7V = mod_R; FTM0_C6V=0;}
+    {FTM0_C3V = mod; FTM0_C2V=0;FTM0_C7V = mod; FTM0_C6V=0;}
   }else{
-    {FTM0_C2V = mod_L; FTM0_C3V=0;FTM0_C6V = mod_R; FTM0_C7V=0;}
+    {FTM0_C2V = mod; FTM0_C3V=0;FTM0_C6V = mod; FTM0_C7V=0;}
   }
 	// Update the clock to the new frequency
 	FTM0_MOD = (CLOCK/Frequency);
@@ -81,7 +81,7 @@ void InitPWM()
 	FTM0_MODE |= FTM_MODE_WPDIS_MASK;
 	FTM3_MODE |= FTM_MODE_WPDIS_MASK;
 	
-	// 309.3.4 FTM Counter Value
+	// 39.3.4 FTM Counter Value
 	// Initialize the CNT to 0 before writing to MOD
 	FTM0_CNT = 0;
 	FTM3_CNT = 0;

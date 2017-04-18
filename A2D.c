@@ -87,3 +87,31 @@ void DAC0_INIT(void) {
     DAC0_C1 = 0;
 }
  
+//int main(void) {
+//    int i; char str[100];
+//   
+//    // Enable UART Pins
+//    //(Insert your code here.)
+//	
+//   
+//    // Initialize UART
+//    uart_init();
+//               
+//    DAC0_INIT();
+//    ADC1_INIT();
+//    PDB_INIT();
+// 
+//    // Start the PDB (ADC Conversions)
+//    PDB0_SC |= PDB_SC_SWTRIG_MASK;
+// 
+//    for(;;) {
+//		sprintf(str,"\n Decimal: %d Hexadecimal: %x \n\r",ADC1_RA,ADC1_RA);
+//		uart_put(str);
+//		for( i=0; i < 5000000; ++i ){
+//                       
+//        }
+//    }
+// 
+//    return 0;
+//}
+ 
