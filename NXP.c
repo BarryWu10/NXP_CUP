@@ -49,13 +49,13 @@ uint16_t line[128];
 //	 data over UART
 int debugcamdata = 1;
 int capcnt = 0;
-char str[100];
+char str[100],str2[100];
 int counter;
 
 uint16_t derive_line[128];
 
 int derivativeMax1_index = 0;
-int derivativeMax2_index = 0;
+int derivativeMin1_index = 0;
 int trigger1_index = 0;
 int trigger2_index = 0;
 
@@ -81,6 +81,7 @@ int main(void)
 	uart_put("Running... \n\r");
 	
 	for(;;){  //then loop forever
+    SetMotorDutyCycle(30, 10000, 1);
     //You can use fork() to run two for loops at the same time, if you need different delays !!!! 
     //Camera reading code goes here
     if (debugcamdata) {
@@ -89,38 +90,53 @@ int main(void)
 			if (capcnt >= (100)) {
 				GPIOB_PCOR |= (1 << 22);
 				// send the array over uart
-				sprintf(str,"%i\n\r",-1); // start value
+				sprintf(str,"%i ",-1); // start value
 				uart_put(str);
 				for (i = 0; i < 127; i++) {
-					sprintf(str,"%i\n\r", line[i]);
+					sprintf(str,"%i ", line[i]);
 					uart_put(str);
 				}
-				sprintf(str,"%i\n\r",-2); // end value
+        deriveLine();
+        findSpecialPoints();
+				sprintf(str,"%i ",-2); // end value
 				uart_put(str);
+        sprintf(str2,"Delta X1= Index = %i Value =%i\n\r", derivativeMax1_index, line[derivativeMax1_index]);
+        uart_put(str2);
+        sprintf(str2,"Delta X2= Index = %i Value =%i\n\r", derivativeMin1_index, line[derivativeMin1_index]);
+        uart_put(str2);
+        sprintf(str,"\n\r"); // end value
+        uart_put(str);
 				capcnt = 0;
 				GPIOB_PSOR |= (1 << 22);
 			}
 		}
-    deriveLine();
-		findSpecialPoints();
-		deltaX1 = 64 - derivativeMax1_index;
-		deltaX2 = derivativeMax2_index - 64;
-		if(deltaX1 > deltaX2){
+    //SetMotorDutyCycle(25, 10000, 1);
+    //deriveLine();
+		//findSpecialPoints();
+		//deltaX1 = 64 - derivativeMax1_index;
+		//deltaX2 = derivativeMin1_index - 64;
+    deltaX1= 64-derivativeMax1_index;
+    deltaX2 = derivativeMin1_index-64;
+		if((deltaX1 - deltaX2) > 20){
 			/*stear right*/
+      SetServoDutyCycle(8, 50);
 		}
-		else if(deltaX1 < deltaX2){
+		else if((deltaX2 - deltaX1) > 20){
 			/*stear left*/
+      SetServoDutyCycle(6 , 50);
 		}else{
 			/*center, keep it center*/
+      SetServoDutyCycle(7 , 50);
 		}
     
     //Driving Car
 		//SetMotorDutyCycle(25, 10000, 1);
 		//SetServoDutyCycle(6 , 50); //turn left
 		//delay(100);
-		//SetServoDutyCycle(7, 50); //turn right left
+		//SetServoDutyCycle(7, 50); //turn forward
 		//delay(100);
-		//SetServoDutyCycle(10, 50);
+		//SetServoDutyCycle(8, 50); // turn right
+    //delay(100);
 	}
 	return 0;
 }
@@ -129,11 +145,39 @@ void findSpecialPoints(){
 	int i;
 	int current1;
 	int current2;
-	/*doing 2 to optimize code*/
-	for(i = 0; i < 64; i ++){
+  
+  
+  derivativeMax1_index = 5;
+  derivativeMin1_index = 5;
+  
+  //derive line exist
+  for(i=5; i < 127; i++){
+    current1 = derive_line[i];
+		current2 = derive_line[i];
+    
+  //find max
+    if(current1 > derive_line[derivativeMax1_index] && i < 70){
+      //sprintf(str2,"in loop MAX1= %i\n\r", derivativeMax1_index);
+      //uart_put(str2);
+			derivativeMax1_index = i;
+		}
+  
+   //find min
+    if(current2 < derive_line[derivativeMin1_index] && i > 5){
+			derivativeMin1_index = i;
+		}
+  }
+  
+  /*
+  derivativeMax1_index = 0;
+  derivativeMin1_index = 0xFFFF;
+	/doing 2 to optimize code/
+	for(i = 1; i < 127; i ++){
 		current1 = line[i];
-		current2 = line[127-i];
+		current2 = line[i];
 		if(current1 > line[derivativeMax1_index]){
+      //sprintf(str2,"in loop MAX1= %i\n\r", derivativeMax1_index);
+      //uart_put(str2);
 			derivativeMax1_index = i;
 		}
 		else if(current1 < trigger1_index){
@@ -141,23 +185,24 @@ void findSpecialPoints(){
 		}
 		else{
 		}
-		if(current2 > line[derivativeMax2_index]){
-			derivativeMax1_index = 127 - i;
+		if(current2 < line[derivativeMin1_index]){
+			derivativeMin1_index = i;
 		}
 		else if(current2 < trigger2_index){
-			trigger1_index = 127 - i;
+			trigger2_index = 127 - i;
 		}
 		else{
 		}
 	}
+  */
 }
 
 void deriveLine(){
 	int i;
 	int delta;
 	derive_line[0] = 0;
-	for(i = 1; i < 127; i++ ){
-		delta = line[i+1] - line[i];
+	for(i = 2; i < 127; i++ ){
+		delta = line[i] - line[i-2];
 		derive_line[i] = delta;
 	}
 }
