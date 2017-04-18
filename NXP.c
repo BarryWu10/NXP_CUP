@@ -12,6 +12,7 @@
 #include "pwm.h"
 #include "stdio.h"
 
+//void Button_Init(void);
 void initialize();
 void en_interrupts();
 void plotCamera(int);
@@ -19,6 +20,7 @@ void plotSmooth(int);
 void plotDerive(int);
 void calculateDerivatives();
 void turn();
+void delay(int del);
 
 //initialize stuff
 void init_FTM2(void);
@@ -41,8 +43,8 @@ void ADC0_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define speedLimit 50
-#define turnLimit 45
+#define speedLimit 55
+#define turnLimit 50
 
 // Pixel counter for camera logic
 // Starts at -2 so that the SI pulse occurs
@@ -75,6 +77,7 @@ int main(void){
 		*		Only 1 plot can be active
 		*/
 		plotCamera(0);
+		plotSmooth(0);
 		plotDerive(0);
 		//sprintf(str,"%f,", midpoint);
 		//uart_put(str);
@@ -109,6 +112,32 @@ void plotCamera(int plot)
 		//no more matlab
 }
 
+void plotSmooth(int plot)
+{		int i;
+		//to read in matlab
+		if (debugcamdata & plot) {
+			// Every 2 seconds
+			//if (capcnt >= (2/INTEGRATION_TIME)) {
+			if (capcnt >= (100)) {
+				GPIOE_PCOR |= (1 << 26);
+				// send the array over uart
+				sprintf(str,"%i\r\n",-1); // start value
+				uart_put(str);
+				for (i = 0; i < 127; i++) {
+					sprintf(str,"%i,", avg_line[i]);
+					uart_put(str);
+				}
+				sprintf(str,"%i\r\n", avg_line[127]);
+				uart_put(str);
+				sprintf(str,"%i\r\n",-2); // end value
+				uart_put(str);
+				capcnt = 0;
+				GPIOE_PSOR |= (1 << 26);
+			}
+		}
+		//no more matlab
+}
+
 void plotDerive(int plot)
 {		int i;
 		//to read in matlab
@@ -116,7 +145,7 @@ void plotDerive(int plot)
 			// Every 2 seconds
 			//if (capcnt >= (2/INTEGRATION_TIME)) {
 			if (capcnt >= (100)) {
-				GPIOB_PCOR |= (1 << 22);
+				GPIOB_PCOR |= (1 << 21);
 				// send the array over uart
 				sprintf(str,"%i\r\n",-1); // start value
 				uart_put(str);
@@ -129,7 +158,7 @@ void plotDerive(int plot)
 				sprintf(str,"%i\r\n",-2); // end value
 				uart_put(str);
 				capcnt = 0;
-				GPIOB_PSOR |= (1 << 22);
+				GPIOB_PSOR |= (1 << 21);
 			}
 		}
 		//no more matlab
@@ -144,6 +173,7 @@ void initialize()
 	init_FTM2(); // To generate CLK, SI, and trigger ADC
 	init_ADC0();
 	init_PIT();	// To trigger camera read based on integration time
+	
 }
 
 /* ADC0 Conversion Complete ISR  */
@@ -217,11 +247,16 @@ void FTM2_IRQHandler(void){ //For FTM timer
 void turn(void){
 	int i;
 	int current1, current2;
-	int derivativeMax1_index, derivativeMin1_index, min, max;
+	int derivativeMax1_index, derivativeMin1_index,	min, max;
 	float servoFactor, motorFactor;
   
   derivativeMax1_index = 64;
   derivativeMin1_index = 64;
+	
+	//black_Max1_index = 64;
+  //black_Min1_index = 64;
+	//black_Max2_index = 64;
+  //black_Min2_index = 64;
   
   //derive line exist
   for(i=1; i < 64; i++){
@@ -232,39 +267,51 @@ void turn(void){
     if((current1 > derive_line[derivativeMax1_index] && i <64) ){
 			derivativeMax1_index = 64-i;
 		}
-  
+		//if((current1 > derive_line[black_Max1_index] && i <20) ){
+			//black_Max1_index= 64-i;
+		//}
+		//if((current1 < derive_line[black_Min1_index] && i <20) ){
+			//black_Min1_index= 64-i;
+		//}
    //find min
     if((current2 < derive_line[derivativeMin1_index] && (127 - i) > 64) ){
 			derivativeMin1_index = 64+i;
 		}
-		
+		//if((current2 > derive_line[black_Max2_index] && (127 - i) > 64 && (127 - i) < 90 )){
+			//black_Max2_index = 64-i;
+		//}
+		//if((current2 < derive_line[black_Min2_index] && (127 - i) > 64 && (127 - i) < 90 )){
+			//black_Min2_index = 64-i;
+		//}
 	}
 
 		
 	midpoint = (float)(derivativeMax1_index+derivativeMin1_index)/2.0;
-
 		
 	if (midpoint > 66.0){
 		//turns left
-		servoFactor = (float) (((midpoint - 62.0)/10.0)*1.0);
+		servoFactor = (float) (((midpoint - 62.0)/14.0)*1.0);
 		SetServoDutyCycle(6.6 - servoFactor, 50);
 		//SetServoDutyCycle(5.6, 50);
-		SetMotorDutyCycle(turnLimit-(2*servoFactor), turnLimit+(5*servoFactor), 10000, 1);
+		SetMotorDutyCycle(turnLimit-(2.5*servoFactor), turnLimit+(5.0*servoFactor), 10000, 1);
 	}
-	else if(midpoint <62.0){
+	else if(midpoint < 62.0){
 		//turns right
-		servoFactor = (float) (((66.0 - midpoint)/10.0)*1.4);
+		servoFactor = (float) (((64.0 - midpoint)/12.0)*1.0);
 		SetServoDutyCycle(6.6+ servoFactor, 50);
 		//SetServoDutyCycle(8.0, 50);
-		SetMotorDutyCycle(turnLimit+(5*servoFactor), turnLimit-(2*servoFactor), 10000, 1);
+		SetMotorDutyCycle(turnLimit+(5.0*servoFactor), turnLimit-(2.5*servoFactor), 10000, 1);
 	}
+	//else if((derive_line[black_Max1_index] - derive_line[black_Min1_index] > 1000) && ((derive_line[black_Max2_index] - derive_line[black_Min2_index]) > 1000)){
+		//SetServoDutyCycle(6.6 ,50);
+		//SetMotorDutyCycle(0, 0, 10000, 1);
+	//}
 	else{
 		//SetServoDutyCycle(6.6, 50);
-		SetServoDutyCycle(6.6 ,50);
-		SetMotorDutyCycle(speedLimit, speedLimit, 10000, 1);
+			SetServoDutyCycle(6.6 ,50);
+			SetMotorDutyCycle(speedLimit, speedLimit, 10000, 1);
 	}
-		
- }
+}
 
 void calculateDerivatives(void){
 	int i;
@@ -309,6 +356,12 @@ void PIT0_IRQHandler(void){
 	return;
 }
 
+void delay(int del){
+	int i;
+	for (i=0; i<del*50000; i++){
+		// Do nothing
+	}
+}
 
 /* Initialization of FTM2 for camera */
 void init_FTM2(){
@@ -439,8 +492,8 @@ void init_GPIO(void){
 	PORTB_PCR9 |= PORT_PCR_MUX(1); // output from PTC7
 	PORTB_PCR23 |= PORT_PCR_MUX(1);
 	
-	//PORTC_PCR6 |= PORT_PCR_MUX(1); // Built in Push Button; Port C, Pin 6
-	//PORTA_PCR4 = PORT_PCR_MUX(1); //check alternative
+	PORTC_PCR6 |= PORT_PCR_MUX(1); // Built in Push Button; Port C, Pin 6
+	PORTA_PCR4 = PORT_PCR_MUX(1); //check alternative
 	// Switch the GPIO pins to output mode (Red and Blue LEDs)
 	
 	GPIOB_PDDR |= (1 << 21) | (1 << 22); // Loads data into the direction register
@@ -456,12 +509,12 @@ void init_GPIO(void){
 
 	// Set the push buttons as an input
 	
-	//GPIOC_PDDR &= ~(1 << 6); 
-	//GPIOA_PDDR &= ~(1 << 4); 
+	GPIOC_PDDR &= ~(1 << 6); 
+	GPIOA_PDDR &= ~(1 << 4); 
 	
 	// interrupt configuration for SW3(Rising Edge) and SW2 (Either)
-	//PORTC_PCR6 |= PORT_PCR_IRQC(11);//sw2 rising only
-	//PORTA_PCR4 |= PORT_PCR_IRQC(9);//sw3 both rising and falling 
+	PORTC_PCR6 |= PORT_PCR_IRQC(11);//sw2 rising only
+	PORTA_PCR4 |= PORT_PCR_IRQC(9);//sw3 both rising and falling 
 	
 	return;
 }
