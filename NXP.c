@@ -146,20 +146,20 @@ int main(void)
 		deltaX2 = derivativeMin1_index-64;
 		if((deltaX1 - deltaX2) > 10 && (deltaX1 - deltaX2) < 20 ){
 		/*stear right*/
-			SetServoDutyCycle(6, 50);
-			SetMotorDutyCycle(30, 10000, 1);
+			SetServoDutyCycle(8.0, 50);
+			SetMotorDutyCycle(30, 10000, 1,1);
 			delay(25);
 			
 		}
 		else if((deltaX2 - deltaX1) > 10 && (deltaX2 - deltaX1) < 20){
 			/*stear left*/
-			SetServoDutyCycle(8 , 50);
-			SetMotorDutyCycle(30, 10000, 1);
+			SetServoDutyCycle(5.5 , 50);
+			SetMotorDutyCycle(30, 10000, 1,0);
 			delay(25);
 		}
 		else{
-			SetServoDutyCycle(7 , 50);
-			SetMotorDutyCycle(30, 10000, 1);
+			SetServoDutyCycle(6.6 , 50);
+			SetMotorDutyCycle(30, 10000, 1,3);
 		}
     
     //Driving Car

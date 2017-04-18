@@ -26,7 +26,7 @@ static volatile unsigned int PWMTick = 0;
  * @param Frequency (~1000 Hz to 20000 Hz)
  * @param dir: 1 for C4 active, else C3 active 
  */
-void SetServoDutyCycle(unsigned int DutyCycle, unsigned int Frequency)
+void SetServoDutyCycle(float DutyCycle, unsigned int Frequency)
 {
 	// Calculate the new cutoff value
 	uint16_t mod = (uint16_t) (((CLOCK/(Frequency*128)) * DutyCycle) / 100);
@@ -37,15 +37,23 @@ void SetServoDutyCycle(unsigned int DutyCycle, unsigned int Frequency)
 	FTM3_MOD = (CLOCK/(Frequency*128)); //changed
 }
 
-void SetMotorDutyCycle(unsigned int DutyCycle, unsigned int Frequency, int dir)
-{
+void SetMotorDutyCycle(unsigned int DutyCycle, unsigned int Frequency, int dir,int turn)
+{// right motor is channel 7 forward and 6 backward
+	// turn =0 -> left turn(right wheel goes faster)/ turn = 1 -> right turn(left wheel goes faster)
+	//turn = other -> forward (both motors have the same speed)
 	// Calculate the new cutoff value
 	uint16_t mod = (uint16_t) (((CLOCK/Frequency) * DutyCycle) / 100);
   
 	// Set outputs 
 	if(dir==1){
-    {FTM0_C3V = mod; FTM0_C2V=0;FTM0_C7V = mod; FTM0_C6V=0;}
-  }else{
+		if (turn ==0){
+       {FTM0_C3V = mod; FTM0_C2V=0;FTM0_C7V = (mod+10); FTM0_C6V=0;}
+		}else if(turn ==1){
+		   {FTM0_C3V = (mod+10); FTM0_C2V=0;FTM0_C7V = mod; FTM0_C6V=0;}
+		}else{
+		   {FTM0_C3V = mod; FTM0_C2V=0;FTM0_C7V = mod; FTM0_C6V=0;}
+	  }
+	}else{
     {FTM0_C2V = mod; FTM0_C3V=0;FTM0_C6V = mod; FTM0_C7V=0;}
   }
 	// Update the clock to the new frequency
