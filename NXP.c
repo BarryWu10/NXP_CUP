@@ -47,12 +47,16 @@ uint16_t line[128];
 
 // These variables are for streaming the camera
 //	 data over UART
-int debugcamdata = 1;
+int debugcamdata = 0;
 int capcnt = 0;
 char str[100],str2[100];
 int counter;
+int sum;
+int avg;
 
-uint16_t derive_line[128];
+uint16_t avg_line[124];
+
+int16_t derive_line[128];
 
 int derivativeMax1_index = 0;
 int derivativeMin1_index = 0;
@@ -62,7 +66,7 @@ int trigger2_index = 0;
 // ADC0VAL holds the current ADC value
 unsigned short ADC0VAL;
 
-uint16_t derive_line[128];
+int16_t derive_line[128];
 
 int main(void)
 {
@@ -81,52 +85,81 @@ int main(void)
 	uart_put("Running... \n\r");
 	
 	for(;;){  //then loop forever
-    SetMotorDutyCycle(30, 10000, 1);
     //You can use fork() to run two for loops at the same time, if you need different delays !!!! 
     //Camera reading code goes here
+		
     if (debugcamdata) {
+
 			// Every 2 seconds
+
 			//if (capcnt >= (2/INTEGRATION_TIME)) {
+
 			if (capcnt >= (100)) {
+
 				GPIOB_PCOR |= (1 << 22);
+
 				// send the array over uart
-				sprintf(str,"%i ",-1); // start value
+
+				sprintf(str,"%i\n\r",-1); // start value
+
 				uart_put(str);
-				for (i = 0; i < 127; i++) {
-					sprintf(str,"%i ", line[i]);
+
+				for (i = 0; i < 128; i++) {
+
+					sprintf(str,"%i\n\r", line[i]);
+
 					uart_put(str);
+
 				}
-        deriveLine();
-        findSpecialPoints();
-				sprintf(str,"%i ",-2); // end value
+
+				sprintf(str,"%i\n\r",-2); // end value
+
 				uart_put(str);
-        sprintf(str2,"Delta X1= Index = %i Value =%i\n\r", derivativeMax1_index, line[derivativeMax1_index]);
-        uart_put(str2);
-        sprintf(str2,"Delta X2= Index = %i Value =%i\n\r", derivativeMin1_index, line[derivativeMin1_index]);
-        uart_put(str2);
-        sprintf(str,"\n\r"); // end value
-        uart_put(str);
+
 				capcnt = 0;
+
 				GPIOB_PSOR |= (1 << 22);
+
 			}
+
 		}
     //SetMotorDutyCycle(25, 10000, 1);
     //deriveLine();
 		//findSpecialPoints();
 		//deltaX1 = 64 - derivativeMax1_index;
 		//deltaX2 = derivativeMin1_index - 64;
-    deltaX1= 64-derivativeMax1_index;
-    deltaX2 = derivativeMin1_index-64;
-		if((deltaX1 - deltaX2) > 20){
-			/*stear right*/
-      SetServoDutyCycle(8, 50);
+    
+		deriveLine();
+    findSpecialPoints();
+		sprintf(str,"Max = %i ",derivativeMax1_index );
+		uart_put(str);
+		sprintf(str,"Min = %i ",derivativeMin1_index );
+		uart_put(str);
+		
+					//sprintf(str,"Derived array:\n");
+					//uart_put(str);
+		//for (i = 0; i < 127; i++) {
+			//		sprintf(str,"%i ", derive_line[i]);
+				//	uart_put(str);
+		//}
+		deltaX1= 64-derivativeMax1_index;
+		deltaX2 = derivativeMin1_index-64;
+		if((deltaX1 - deltaX2) > 10 && (deltaX1 - deltaX2) < 20 ){
+		/*stear right*/
+			SetServoDutyCycle(6, 50);
+			SetMotorDutyCycle(30, 10000, 1);
+			delay(25);
+			
 		}
-		else if((deltaX2 - deltaX1) > 20){
+		else if((deltaX2 - deltaX1) > 10 && (deltaX2 - deltaX1) < 20){
 			/*stear left*/
-      SetServoDutyCycle(6 , 50);
-		}else{
-			/*center, keep it center*/
-      SetServoDutyCycle(7 , 50);
+			SetServoDutyCycle(8 , 50);
+			SetMotorDutyCycle(30, 10000, 1);
+			delay(25);
+		}
+		else{
+			SetServoDutyCycle(7 , 50);
+			SetMotorDutyCycle(30, 10000, 1);
 		}
     
     //Driving Car
@@ -146,25 +179,24 @@ void findSpecialPoints(){
 	int current1;
 	int current2;
   
-  
   derivativeMax1_index = 5;
-  derivativeMin1_index = 5;
+  derivativeMin1_index = 123;
   
   //derive line exist
-  for(i=5; i < 127; i++){
-    current1 = derive_line[i];
-		current2 = derive_line[i];
+  for(i=5; i < 64; i++){
+    current1 = derive_line[i]/*avg*/;
+		current2 = derive_line[124 - i]/*avg*/;
     
   //find max
-    if(current1 > derive_line[derivativeMax1_index] && i < 70){
+    if((current1 > derive_line[derivativeMax1_index] && i <64) ){
       //sprintf(str2,"in loop MAX1= %i\n\r", derivativeMax1_index);
       //uart_put(str2);
 			derivativeMax1_index = i;
 		}
   
    //find min
-    if(current2 < derive_line[derivativeMin1_index] && i > 5){
-			derivativeMin1_index = i;
+    if((current2 < derive_line[derivativeMin1_index] && (124 - i) > 64) ){
+			derivativeMin1_index = 124-i;
 		}
   }
   
@@ -198,13 +230,65 @@ void findSpecialPoints(){
 }
 
 void deriveLine(){
-	int i;
+	int i, a, b, c;
 	int delta;
 	derive_line[0] = 0;
-	for(i = 2; i < 127; i++ ){
-		delta = line[i] - line[i-2];
+	sum = 0;
+	a = line[0];
+	b = line[1];
+	c = line[2];
+	for(i = 3; i < 128; i++){
+		sum = a+b+c;
+		avg_line[i-3] = sum/3;
+		if((i % 3) == 0){
+			a = line[i];
+		}
+		else if((i % 3) == 1){
+			b = line[i];
+		}
+		else{
+			c = line[i];
+		}
+	}
+	//for (i = 0; i < 127; i++) {
+		//	sprintf(str,"%i\n\r", avg_line[i]);
+			//uart_put(str);
+				//}
+	for(i = 0; i < 128; i++ ){
+		line[i] = (line[i-1]+line[i]+line[i+1])/3; 
+		//if(avg_line[i] >= avg_line[i-1]){
+			delta = avg_line[i] - avg_line[i-1];
+		//}else{
+			//delta = avg_line[i-1] - avg_line[i];
+		//}
+		//delta = avg_line[i] - avg_line[i-1];
+		sum += delta;
 		derive_line[i] = delta;
 	}
+	sum=0;
+	a = derive_line[0];
+	b = derive_line[1];
+	c = derive_line[2];
+	for(i = 3; i < 128; i++){
+		sum = a+b+c;
+		derive_line[i-3] = sum/3;
+		if((i % 3) == 0){
+			a = derive_line[i];
+		}
+		else if((i % 3) == 1){
+			b = derive_line[i];
+		}
+		else{
+			c = derive_line[i];
+		}
+	}
+	  //sprintf(str,"Start\n");
+		//uart_put(str);
+		//for (i = 0; i < 125; i++) {
+			//sprintf(str,"%i ", derive_line[i]);
+			//uart_put(str);
+				//}
+	//avg = sum/125;
 }
 
 /**
