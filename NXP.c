@@ -41,6 +41,9 @@ void ADC0_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
+#define speedLimit 50
+#define turnLimit 45
+
 // Pixel counter for camera logic
 // Starts at -2 so that the SI pulse occurs
 //		ADC reads start
@@ -71,7 +74,7 @@ int main(void){
 		/*
 		*		Only 1 plot can be active
 		*/
-		plotCamera(1);
+		plotCamera(0);
 		plotDerive(0);
 		//sprintf(str,"%f,", midpoint);
 		//uart_put(str);
@@ -215,7 +218,7 @@ void turn(void){
 	int i;
 	int current1, current2;
 	int derivativeMax1_index, derivativeMin1_index, min, max;
-	//float midpoint, servoFactor, motorFactor;
+	float servoFactor, motorFactor;
   
   derivativeMax1_index = 64;
   derivativeMin1_index = 64;
@@ -240,25 +243,25 @@ void turn(void){
 		
 	midpoint = (float)(derivativeMax1_index+derivativeMin1_index)/2.0;
 
-				
+		
 	if (midpoint > 66.0){
 		//turns left
-		//servoFactor = (float) 1.2/((midpoint - 66.0));
-		//SetServoDutyCycle(6.8 - servoFactor, 50);
-		SetServoDutyCycle(5.6, 50);
-		SetMotorDutyCycle(35, 35, 10000, 1);
+		servoFactor = (float) (((midpoint - 62.0)/10.0)*1.0);
+		SetServoDutyCycle(6.6 - servoFactor, 50);
+		//SetServoDutyCycle(5.6, 50);
+		SetMotorDutyCycle(turnLimit-(2*servoFactor), turnLimit+(5*servoFactor), 10000, 1);
 	}
 	else if(midpoint <62.0){
 		//turns right
-		//servoFactor = (float) 1.2/((62.0-midpoint));
-		//SetServoDutyCycle(6.8+ servoFactor, 50);
-		SetServoDutyCycle(8.0, 50);
-		SetMotorDutyCycle(35, 35, 10000, 1);
+		servoFactor = (float) (((66.0 - midpoint)/10.0)*1.4);
+		SetServoDutyCycle(6.6+ servoFactor, 50);
+		//SetServoDutyCycle(8.0, 50);
+		SetMotorDutyCycle(turnLimit+(5*servoFactor), turnLimit-(2*servoFactor), 10000, 1);
 	}
 	else{
 		//SetServoDutyCycle(6.6, 50);
 		SetServoDutyCycle(6.6 ,50);
-		SetMotorDutyCycle(35, 35, 10000, 1);
+		SetMotorDutyCycle(speedLimit, speedLimit, 10000, 1);
 	}
 		
  }

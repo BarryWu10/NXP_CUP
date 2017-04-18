@@ -37,7 +37,7 @@ void SetServoDutyCycle(float DutyCycle, unsigned int Frequency)
 	FTM3_MOD = (CLOCK/(Frequency*128)); //changed
 }
 
-void SetMotorDutyCycle(unsigned int leftDutyCycle, unsigned int rightDutyCycle, unsigned int Frequency, int dir)
+void SetMotorDutyCycle(float leftDutyCycle, float rightDutyCycle, unsigned int Frequency, int dir)
 {
 	// Calculate the new cutoff value
 	uint16_t mod_L = (uint16_t) (((CLOCK/Frequency) * leftDutyCycle) / 100);
