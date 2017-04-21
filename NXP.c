@@ -43,8 +43,8 @@ void ADC0_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define speedLimit 40
-#define turnLimit 35
+#define speedLimit 58
+#define turnLimit 45
 
 // Pixel counter for camera logic
 // Starts at -2 so that the SI pulse occurs
@@ -57,6 +57,10 @@ int clkval = 0;
 uint16_t line[128];					//lines
 uint16_t avg_line[128];			//smooth line
 int16_t derive_line[128];		//derive line
+
+float kp = 3.5/45;
+float kd;
+float ki;
 
 // These variables are for streaming the camera
 //	 data over UART
@@ -291,7 +295,7 @@ void turn(void){
   //black_Min2_index = 64;
   
   //derive line exist
-  for(i=1; i < 59; i++){
+  for(i=0; i < 50; i++){
     current1 = derive_line[64-i]/*avg*/;
 		current2 = derive_line[64+i]/*avg*/;
     
@@ -321,17 +325,56 @@ void turn(void){
 		
 	midpoint = (float)(derivativeMax1_index+derivativeMin1_index)/2.0;
 	
-		
-	if (midpoint > 69.0){
+	
+	if ( midpoint > 66){
 		//turns left
-		servoFactor = (float) (((midpoint - 64.0)/13.0)*1.75);
+		servoFactor = (float) (((midpoint - 64.0)*kp));
+		if ( servoFactor > 1.75) {
+			SetServoDutyCycle(8,50);
+			SetMotorDutyCycle(turnLimit-(.15*turnLimit*servoFactor),turnLimit+(.15*turnLimit*servoFactor), 10000, 1);
+		}
+		else{
+			SetServoDutyCycle(9.75 - servoFactor, 50);
+			SetMotorDutyCycle(turnLimit-(.15*turnLimit*servoFactor),turnLimit+(.15*turnLimit*servoFactor), 10000, 1);
+		}
+	}
+	else if ( midpoint < 62){
+		servoFactor = (float) (((midpoint - 64)*kp));
+		if ( servoFactor < -1.75) {
+			SetServoDutyCycle(11.5,50);
+			SetMotorDutyCycle(turnLimit+(.15*turnLimit*servoFactor),turnLimit-(.1*turnLimit*servoFactor), 10000, 1);
+		}
+		else{
+			SetServoDutyCycle(9.75 - servoFactor, 50);
+			SetMotorDutyCycle(turnLimit+(.15*turnLimit*servoFactor),turnLimit-(.1*turnLimit*servoFactor), 10000, 1);
+			}
+		}
+	else{
+		SetServoDutyCycle(9.75,50);
+		SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
+	}
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	/*	
+	if (midpoint > 66.0){
+		//turns left
+		servoFactor = (float) (((midpoint - 62.0)/13.0)*1.75);
 		SetServoDutyCycle(9.75 - servoFactor, 50);
 		//SetServoDutyCycle(5.6, 50);
 		SetMotorDutyCycle(turnLimit-(2.5*servoFactor), turnLimit+(5.0*servoFactor), 10000, 1);
 	}
-	else if(midpoint < 59.0){
+	else if(midpoint < 62.0){
 		//turns right
-		servoFactor = (float) (((64.0 - midpoint)/13.0)*1.75);
+		servoFactor = (float) (((66.0 - midpoint)/13.0)*1.75);
 		SetServoDutyCycle(9.75+ servoFactor, 50);
 		//SetServoDutyCycle(8.0, 50);
 		SetMotorDutyCycle(turnLimit+(5.0*servoFactor), turnLimit-(2.5*servoFactor), 10000, 1);
@@ -345,36 +388,43 @@ void turn(void){
 			SetServoDutyCycle(9.75 ,50);
 			SetMotorDutyCycle(speedLimit, speedLimit, 10000, 1);
 	}
-}
+}*/
 
 void calculateDerivatives(void){
-	
+	/*
 	int i;
 	int delta, sum;
 
-	for(i = 0; i < 128; i++ ){
+	avg_line[1] = 0;
+	avg_line[0] = 0;
+	avg_line[127] = 0;
+	avg_line[126] = 0;
+	for(i = 2; i < 126; i++ ){
 		sum = ((1*line[i-2])+ (4*line[i-1]) + (8*line[i]) + (8*line[i+1]) + (1*line[i+2]));
 		avg_line[i] = sum/6;
 	}
+	derive_line[1] = 0;
 	derive_line[0] = 0;
-	for(i = 1; i < 128; i++ ){
+	derive_line[127] = 0;
+	derive_line[126] = 0;
+	for(i = 2; i < 126; i++ ){
 		delta = avg_line[i] - avg_line[i-1];
 		derive_line[i] = delta;
-	}
-	/*
+	}*/
+	
 	int i;
 	int delta, sum;
 	avg_line[0] = line[0];
 	avg_line[1] = line[1];
 	derive_line[0] = avg_line[1] - avg_line[0];
 	for(i = 2; i < 127; i++ ){
-		avg_line[i] = 2*(((line[i-2])+ (line[i-1]) + (line[i]) + (line[i+1]) + (line[i+2]))/6);
-		avg_line[i+1] = 2*(((line[i-1])+ (line[i]) + (line[i+1]) + (line[i+2]) + (line[i+3]))/6);
+		avg_line[i] = (((line[i-2])+ (line[i-1]) + (line[i]) + (line[i+1]) + (line[i+2]))/6);
+		avg_line[i+1] = (((line[i-1])+ (line[i]) + (line[i+1]) + (line[i+2]) + (line[i+3]))/6);
 		derive_line[i-1] = ((avg_line[i+1] - avg_line[i-1])/2);
 	}
 	derive_line[126] = (avg_line[127] - avg_line[125])/2;
 	derive_line[127] = (avg_line[127] - avg_line[126]);
-	*/
+	
 }	
 
 /* PIT0 determines the integration period
