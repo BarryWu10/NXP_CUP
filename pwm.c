@@ -43,7 +43,7 @@ void SetMotorDutyCycle(float leftDutyCycle, float rightDutyCycle, unsigned int F
 	uint16_t mod_L = (uint16_t) (((CLOCK/Frequency) * leftDutyCycle) / 100);
 	uint16_t mod_R = (uint16_t) (((CLOCK/Frequency) * rightDutyCycle) / 100);
 	// Set outputs 
-	if(dir==1){
+	if(dir==0){
     {FTM0_C3V = mod_L; FTM0_C2V=0;FTM0_C7V = mod_R; FTM0_C6V=0;}
   }else{
     {FTM0_C2V = mod_L; FTM0_C3V=0;FTM0_C6V = mod_R; FTM0_C7V=0;}
