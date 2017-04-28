@@ -43,8 +43,8 @@ void ADC0_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define speedLimit 58
-#define turnLimit 45
+#define speedLimit 50
+#define turnLimit 40
 
 // Pixel counter for camera logic
 // Starts at -2 so that the SI pulse occurs
@@ -331,22 +331,23 @@ void turn(void){
 		servoFactor = (float) (((midpoint - 64.0)*kp));
 		if ( servoFactor > 1.75) {
 			SetServoDutyCycle(8,50);
-			SetMotorDutyCycle(turnLimit-(.15*turnLimit*servoFactor),turnLimit+(.15*turnLimit*servoFactor), 10000, 1);
+			SetMotorDutyCycle(turnLimit-(.15*turnLimit*servoFactor),turnLimit+(.2*turnLimit*servoFactor), 10000, 1);
 		}
 		else{
 			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit-(.15*turnLimit*servoFactor),turnLimit+(.15*turnLimit*servoFactor), 10000, 1);
+			SetMotorDutyCycle(turnLimit-(.15*turnLimit*servoFactor),turnLimit+(.2*turnLimit*servoFactor), 10000, 1);
 		}
 	}
 	else if ( midpoint < 62){
+		//turns right
 		servoFactor = (float) (((midpoint - 64)*kp));
 		if ( servoFactor < -1.75) {
 			SetServoDutyCycle(11.5,50);
-			SetMotorDutyCycle(turnLimit+(.15*turnLimit*servoFactor),turnLimit-(.1*turnLimit*servoFactor), 10000, 1);
+			SetMotorDutyCycle(turnLimit+(.2*turnLimit*servoFactor),turnLimit-(.15*turnLimit*servoFactor), 10000, 1);
 		}
 		else{
 			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit+(.15*turnLimit*servoFactor),turnLimit-(.1*turnLimit*servoFactor), 10000, 1);
+			SetMotorDutyCycle(turnLimit+(.2*turnLimit*servoFactor),turnLimit-(.15*turnLimit*servoFactor), 10000, 1);
 			}
 		}
 	else{
