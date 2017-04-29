@@ -18,6 +18,7 @@ void en_interrupts();
 void plotCamera(int);
 void plotSmooth(int);
 void plotDerive(int);
+void plotDerive2(int);
 void calculateDerivatives();
 void turn();
 void delay(int del);
@@ -43,9 +44,8 @@ void ADC0_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define speedLimit 50
-#define turnLimit 40
-
+#define speedLimit 75
+#define turnLimit 65
 // Pixel counter for camera logic
 // Starts at -2 so that the SI pulse occurs
 //		ADC reads start
@@ -57,18 +57,20 @@ int clkval = 0;
 uint16_t line[128];					//lines
 uint16_t avg_line[128];			//smooth line
 int16_t derive_line[128];		//derive line
+int16_t derive2_line[128];		//second derivative line
 
 float kp = 3.5/45;
 float kd;
 float ki;
-
+float servoFactor;
 // These variables are for streaming the camera
 //	 data over UART
 int debugcamdata = 1;
 int capcnt = 0;
 char str[100],str2[100];
 int counter;
-float midpoint;
+float midpoint, p_midpoint;
+char current_state, previous_state;
 
 // ADC0VAL holds the current ADC value
 unsigned short ADC0VAL;
@@ -160,6 +162,34 @@ void plotSmooth(int plot)
 				sprintf(str,"%i\r\n",-2); // end value
 				uart_put(str);
 				capcnt = 0;
+				GPIOE_PSOR |= (1 << 26);
+			}
+		}
+		//no more matlab
+}
+
+void plotDerive2(int plot)
+{		int i;
+		//to read in matlab
+		if (debugcamdata & plot) {
+			// Every 2 seconds
+			//if (capcnt >= (2/INTEGRATION_TIME)) {
+			if (capcnt >= (100)) {
+				GPIOB_PCOR |= (1 << 21);
+				GPIOE_PCOR |= (1 << 26);
+				// send the array over uart
+				sprintf(str,"%i\r\n",-1); // start value
+				uart_put(str);
+				for (i = 0; i < 127; i++) {
+					sprintf(str,"%i,", derive2_line[i]);
+					uart_put(str);
+				}
+				sprintf(str,"%i\r\n", derive2_line[127]);
+				uart_put(str);
+				sprintf(str,"%i\r\n",-2); // end value
+				uart_put(str);
+				capcnt = 0;
+				GPIOB_PSOR |= (1 << 21);
 				GPIOE_PSOR |= (1 << 26);
 			}
 		}
@@ -270,7 +300,7 @@ void FTM2_IRQHandler(void){ //For FTM timer
 		plotCamera(0);
 		plotSmooth(0);
 		plotDerive(0);
-		
+		plotDerive2(0);
 		
 		
 		turn();
@@ -282,114 +312,82 @@ void FTM2_IRQHandler(void){ //For FTM timer
 
 void turn(void){
 	int i;
-	int current1, current2;
-	int derivativeMax1_index, derivativeMin1_index,	min, max;
-	float servoFactor, motorFactor;
-  
-  derivativeMax1_index = 64;
-  derivativeMin1_index = 64;
+	int max_R, max_L, min_R, min_L;
+	int L_high, L_low, R_high, R_low;
 	
-	//black_Max1_index = 64;
-  //black_Min1_index = 64;
-	//black_Max2_index = 64;
-  //black_Min2_index = 64;
-  
+	L_high = 0;
+	L_low = 0;
+	R_high = 0;
+	R_low = 0;
+
   //derive line exist
   for(i=0; i < 50; i++){
-    current1 = derive_line[64-i]/*avg*/;
-		current2 = derive_line[64+i]/*avg*/;
-    
-  //find max
-    if((current1 > derive_line[derivativeMax1_index] && i <64) ){
-			derivativeMax1_index = 64-i;
+
+		if ( derive_line[64-i] > R_high){
+			max_R = 64-i;
+			R_high = derive_line[64-i];
 		}
-		//if((current1 > derive_line[black_Max1_index] && i <20) ){
-			//black_Max1_index= 64-i;
-		//}
-		//if((current1 < derive_line[black_Min1_index] && i <20) ){
-			//black_Min1_index= 64-i;
-		//}
-   //find min
-    if((current2 < derive_line[derivativeMin1_index] && (127 - i) > 64) ){
-			derivativeMin1_index = 64+i;
+		if ( derive_line[64-i] < R_low){
+			min_R = 64-i;
+			R_low = derive_line[64-i];
 		}
-		//if((current2 > derive_line[black_Max2_index] && (127 - i) > 64 && (127 - i) < 90 )){
-			//black_Max2_index = 64-i;
-		//}
-		//if((current2 < derive_line[black_Min2_index] && (127 - i) > 64 && (127 - i) < 90 )){
-			//black_Min2_index = 64-i;
-		//}
+		if ( derive_line[64+i] > L_high){
+			max_L = 64+i;
+			L_high = derive_line[64+i];
+		}
+		if ( derive_line[64+i] < L_low){
+			min_L = 64+i;
+			L_low = derive_line[64+i];
+		}
 	}
 
 
-		
-	midpoint = (float)(derivativeMax1_index+derivativeMin1_index)/2.0;
-	
-	
+	if ((R_high < L_high) || (R_low < L_low)){
+		midpoint = p_midpoint;
+	}else{
+		p_midpoint = midpoint;
+		midpoint = (float)(max_R+min_L)/2.0;
+	}
+	servoFactor = (float) (((midpoint - 64.0)*kp));
+
 	if ( midpoint > 66){
-		//turns left
-		servoFactor = (float) (((midpoint - 64.0)*kp));
-		if ( servoFactor > 1.75) {
-			SetServoDutyCycle(8,50);
-			SetMotorDutyCycle(turnLimit-(.15*turnLimit*servoFactor),turnLimit+(.2*turnLimit*servoFactor), 10000, 1);
-		}
-		else{
-			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit-(.15*turnLimit*servoFactor),turnLimit+(.2*turnLimit*servoFactor), 10000, 1);
-		}
-	}
-	else if ( midpoint < 62){
-		//turns right
-		servoFactor = (float) (((midpoint - 64)*kp));
-		if ( servoFactor < -1.75) {
-			SetServoDutyCycle(11.5,50);
-			SetMotorDutyCycle(turnLimit+(.2*turnLimit*servoFactor),turnLimit-(.15*turnLimit*servoFactor), 10000, 1);
-		}
-		else{
-			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit+(.2*turnLimit*servoFactor),turnLimit-(.15*turnLimit*servoFactor), 10000, 1);
+		previous_state = current_state;
+		current_state = 'l';
+			if (midpoint > 66){
+				if ( servoFactor > 1.75) {
+					SetServoDutyCycle(8,50);
+					SetMotorDutyCycle(turnLimit-(.35*turnLimit*servoFactor),turnLimit+(.135*turnLimit*servoFactor), 10000, 1);
+				}else{
+					SetServoDutyCycle(9.75 - servoFactor, 50);
+					SetMotorDutyCycle(turnLimit-(.35*turnLimit*servoFactor),turnLimit+(.135*turnLimit*servoFactor), 10000, 1);
+				}
+			}else{
+					SetServoDutyCycle(9.75 - servoFactor, 50);
+					SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
 			}
+		}else if ( midpoint < 62){
+		//turns right
+		previous_state = current_state;
+		current_state = 'r';
+		if ( midpoint < 62){
+			if ( servoFactor < -1.75) {
+				SetServoDutyCycle(11.5,50);
+				SetMotorDutyCycle(turnLimit-(.135*turnLimit*servoFactor),turnLimit+(.35*turnLimit*servoFactor), 10000, 1);
+			}
+			else{
+				SetServoDutyCycle(9.75 - servoFactor, 50);
+				SetMotorDutyCycle(turnLimit-(.135*turnLimit*servoFactor),turnLimit+(.35*turnLimit*servoFactor), 10000, 1);
+				}
+		}else{
+			SetServoDutyCycle(9.75 - servoFactor, 50);
+			SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
+		}
 		}
 	else{
 		SetServoDutyCycle(9.75,50);
 		SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
 	}
 	}
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	/*	
-	if (midpoint > 66.0){
-		//turns left
-		servoFactor = (float) (((midpoint - 62.0)/13.0)*1.75);
-		SetServoDutyCycle(9.75 - servoFactor, 50);
-		//SetServoDutyCycle(5.6, 50);
-		SetMotorDutyCycle(turnLimit-(2.5*servoFactor), turnLimit+(5.0*servoFactor), 10000, 1);
-	}
-	else if(midpoint < 62.0){
-		//turns right
-		servoFactor = (float) (((66.0 - midpoint)/13.0)*1.75);
-		SetServoDutyCycle(9.75+ servoFactor, 50);
-		//SetServoDutyCycle(8.0, 50);
-		SetMotorDutyCycle(turnLimit+(5.0*servoFactor), turnLimit-(2.5*servoFactor), 10000, 1);
-	}
-	//else if((derive_line[black_Max1_index] - derive_line[black_Min1_index] > 1000) && ((derive_line[black_Max2_index] - derive_line[black_Min2_index]) > 1000)){
-		//SetServoDutyCycle(6.6 ,50);
-		//SetMotorDutyCycle(0, 0, 10000, 1);
-	//}
-	else{
-		//SetServoDutyCycle(6.6, 50);
-			SetServoDutyCycle(9.75 ,50);
-			SetMotorDutyCycle(speedLimit, speedLimit, 10000, 1);
-	}
-}*/
 
 void calculateDerivatives(void){
 	/*
@@ -425,6 +423,12 @@ void calculateDerivatives(void){
 	}
 	derive_line[126] = (avg_line[127] - avg_line[125])/2;
 	derive_line[127] = (avg_line[127] - avg_line[126]);
+	derive2_line[0] = derive_line[1] - derive_line[0];
+	for(i = 2; i < 127; i++ ){
+		derive2_line[i-1] = ((derive_line[i+1] - derive_line[i-1])/2);
+	}
+	derive2_line[126] = (derive_line[127] - derive_line[125])/2;
+	derive2_line[127] = (derive_line[127] - derive_line[126]);
 	
 }	
 
@@ -541,7 +545,7 @@ void init_PIT(void){
 	// PIT clock frequency is the system clock
 	// Load the value that the timer will count down from
 	//INSERT CODE HERE
-	PIT_LDVAL0 = (uint32_t)((INTEGRATION_TIME/1.0) * DEFAULT_SYSTEM_CLOCK);
+	PIT_LDVAL0 = (uint32_t)((1.3*INTEGRATION_TIME) * DEFAULT_SYSTEM_CLOCK);
 	
 	// Enable timer interrupts
 	//INSERT CODE HERE
