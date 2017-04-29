@@ -39,9 +39,31 @@ void SetServoDutyCycle(float DutyCycle, unsigned int Frequency)
 
 void SetMotorDutyCycle(float leftDutyCycle, float rightDutyCycle, unsigned int Frequency, int dir)
 {
+	float leftDuty, rightDuty;
+	uint16_t mod_L, mod_R;
+	//set left
+	if(leftDutyCycle >= 100){
+		leftDuty = 100;
+	}
+	else if(leftDutyCycle <= 0){
+		leftDuty = 0;
+	}
+	else{
+		leftDuty = leftDutyCycle;
+	}
+	//set right
+	if(rightDutyCycle >= 100){
+		rightDuty = 100;
+	}
+	else if(rightDutyCycle <= 0){
+		rightDuty = 0;
+	}
+	else{
+		rightDuty = rightDutyCycle;
+	}
 	// Calculate the new cutoff value
-	uint16_t mod_L = (uint16_t) (((CLOCK/Frequency) * leftDutyCycle) / 100);
-	uint16_t mod_R = (uint16_t) (((CLOCK/Frequency) * rightDutyCycle) / 100);
+	mod_L = (uint16_t) (((CLOCK/Frequency) * leftDuty) / 100);
+	mod_R = (uint16_t) (((CLOCK/Frequency) * rightDuty) / 100);
 	// Set outputs 
 	if(dir==0){
     {FTM0_C3V = mod_L; FTM0_C2V=0;FTM0_C7V = mod_R; FTM0_C6V=0;}

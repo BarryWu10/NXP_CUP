@@ -44,8 +44,8 @@ void ADC0_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define speedLimit 75
-#define turnLimit 65
+#define speedLimit 75//75
+#define turnLimit 75//65
 // Pixel counter for camera logic
 // Starts at -2 so that the SI pulse occurs
 //		ADC reads start
@@ -71,6 +71,7 @@ char str[100],str2[100];
 int counter;
 float midpoint, p_midpoint;
 char current_state, previous_state;
+int s_counter, b_counter, t_counter;
 
 // ADC0VAL holds the current ADC value
 unsigned short ADC0VAL;
@@ -238,12 +239,6 @@ void initialize()
 void ADC0_IRQHandler(void) {
 	// Reading ADC0_RA clears the conversion complete flag
 	//INSERT CODE HERE
-	//if(ADC0_RA > 30000){
-		//ADC0VAL = 1;
-	//}
-	//else{
-		//ADC0VAL = 0;
-//	}
 	ADC0VAL = ADC0_RA;
 }
 
@@ -299,7 +294,7 @@ void FTM2_IRQHandler(void){ //For FTM timer
 		
 		plotCamera(0);
 		plotSmooth(0);
-		plotDerive(0);
+		plotDerive(1);
 		plotDerive2(0);
 		
 		
@@ -545,7 +540,7 @@ void init_PIT(void){
 	// PIT clock frequency is the system clock
 	// Load the value that the timer will count down from
 	//INSERT CODE HERE
-	PIT_LDVAL0 = (uint32_t)((1.3*INTEGRATION_TIME) * DEFAULT_SYSTEM_CLOCK);
+	PIT_LDVAL0 = (uint32_t)((1.5*INTEGRATION_TIME) * DEFAULT_SYSTEM_CLOCK);
 	
 	// Enable timer interrupts
 	//INSERT CODE HERE
