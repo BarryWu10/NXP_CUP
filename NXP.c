@@ -44,8 +44,16 @@ void ADC0_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define speedLimit 75//75
-#define turnLimit 75//65
+#define fastSpeed 70
+#define fastTurn 62
+#define slowSpeed 35
+#define slowTurn 30
+
+
+/*
+#define speedLimit 70// 75
+#define turnLimit 62//65
+*/
 // Pixel counter for camera logic
 // Starts at -2 so that the SI pulse occurs
 //		ADC reads start
@@ -53,13 +61,15 @@ int pixcnt = -2;
 // clkval toggles with each FTM interrupt
 int clkval = 0;
 // line stores the current array of camera data
+int speedLimit;
+int turnLimit;
 
 uint16_t line[128];					//lines
 uint16_t avg_line[128];			//smooth line
 int16_t derive_line[128];		//derive line
 int16_t derive2_line[128];		//second derivative line
 
-float kp = 3.5/45;
+float kp = 3.5/40;
 float kd;
 float ki;
 float servoFactor;
@@ -73,6 +83,9 @@ float midpoint, p_midpoint;
 char current_state, previous_state;
 int s_counter, b_counter, t_counter;
 
+int turnOnFast = 0;
+int turnOnSlow = 0;
+
 // ADC0VAL holds the current ADC value
 unsigned short ADC0VAL;
 
@@ -80,6 +93,49 @@ int main(void){
 	//initialize all the interrupts
 	initialize();
 	for(;;){
+		
+		while(GPIOC_PDIR == (0<<6)){
+			/*
+			GPIOB_PSOR = (1 << 22);      //sets red to on
+			GPIOE_PSOR = (1 << 26);      //sets green to on
+			GPIOB_PSOR = (1 << 21);      //sets blue to on	
+			*/
+			turnOnFast = !turnOnFast;
+			turnOnSlow = 0;
+		}
+		
+		if(turnOnFast & !turnOnSlow){
+			/*
+			GPIOB_PCOR = (1 << 22);      //sets red to on
+			GPIOE_PSOR = (1 << 26);      //sets green to on
+			GPIOB_PSOR = (1 << 21);      //sets blue to on	
+			*/
+			speedLimit = fastSpeed;
+			turnLimit = fastTurn;
+		}
+		else if(turnOnSlow & !turnOnFast){
+			/*
+			GPIOB_PSOR = (1 << 22);      //sets red to on
+			GPIOE_PCOR = (1 << 26);      //sets green to on
+			GPIOB_PSOR = (1 << 21);      //sets blue to on	
+			*/
+			speedLimit = slowSpeed;
+			turnLimit = slowTurn;
+		}
+		else{
+			//SetServoDutyCycle(9.75,50);
+			/*
+			GPIOB_PSOR = (1 << 22);      //sets red to on
+			GPIOE_PSOR = (1 << 26);      //sets green to on
+			GPIOB_PCOR = (1 << 21);      //sets blue to on	
+			*/
+			speedLimit = 0;
+		}
+		
+		
+		
+		
+		
 		/*
 		*		Only 1 plot can be active
 		*/
@@ -116,6 +172,47 @@ int main(void){
 	}
 	return 0;
 }
+
+void PORTA_IRQHandler(void){ //For switch 3
+	
+	
+    //clears the interrupt
+	PORTA_ISFR |= PORT_ISFR_ISF_MASK;
+	turnOnFast = 0;
+	turnOnSlow = !turnOnSlow;
+	
+	
+	if(turnOnFast & !turnOnSlow){
+			/*
+			GPIOB_PCOR = (1 << 22);      //sets red to on
+			GPIOE_PSOR = (1 << 26);      //sets green to on
+			GPIOB_PSOR = (1 << 21);      //sets blue to on	
+			*/
+			speedLimit = fastSpeed;
+			turnLimit = fastTurn;
+		}
+		else if(turnOnSlow & !turnOnFast){
+			/*
+			GPIOB_PSOR = (1 << 22);      //sets red to on
+			GPIOE_PCOR = (1 << 26);      //sets green to on
+			GPIOB_PSOR = (1 << 21);      //sets blue to on	
+			*/
+			speedLimit = slowSpeed;
+			turnLimit = slowTurn;
+		}
+		else{
+			//SetServoDutyCycle(9.75,50);
+			/*
+			GPIOB_PSOR = (1 << 22);      //sets red to on
+			GPIOE_PSOR = (1 << 26);      //sets green to on
+			GPIOB_PCOR = (1 << 21);      //sets blue to on	
+			*/
+			speedLimit = 0;
+		}
+	
+	return;
+}
+
 
 void plotCamera(int plot)
 {		int i;
@@ -294,7 +391,7 @@ void FTM2_IRQHandler(void){ //For FTM timer
 		
 		plotCamera(0);
 		plotSmooth(0);
-		plotDerive(1);
+		plotDerive(0);
 		plotDerive2(0);
 		
 		
@@ -335,16 +432,36 @@ void turn(void){
 			L_low = derive_line[64+i];
 		}
 	}
-
+	
+	if(R_high < 800 && L_high < 800 && R_low < -800 && L_low < -800){
+	p_midpoint = midpoint;
+		if (previous_state == 'l'){
+			midpoint = 59;
+		}else if (previous_state == 'r'){
+			midpoint = 69;
+		}else {
+			midpoint = 64;
+		}
+	}
 
 	if ((R_high < L_high) || (R_low < L_low)){
 		midpoint = p_midpoint;
-	}else{
+	}/*
+	else if(R_high < 800 && L_high < 800 && R_low < -800 && L_low < -800){
+	p_midpoint = midpoint;
+		if (previous_state == 'l'){
+			midpoint = 59;
+		}else if (previous_state == 'r'){
+			midpoint = 69;
+		}else {
+			midpoint = 64;
+		}
+	}*/
+	else{
 		p_midpoint = midpoint;
 		midpoint = (float)(max_R+min_L)/2.0;
 	}
 	servoFactor = (float) (((midpoint - 64.0)*kp));
-
 	if ( midpoint > 66){
 		previous_state = current_state;
 		current_state = 'l';
@@ -573,33 +690,31 @@ void init_PIT(void){
 void init_GPIO(void){
 	// Enable LED and GPIO so we can see results
 	//INSERT CODE HERE
-	
-	
 	//initialize push buttons and LEDs
 	
 	//initialize clocks for each different port used.
-	SIM_SCGC5 |= SIM_SCGC5_PORTB_MASK |	SIM_SCGC5_PORTE_MASK; //LED
+	SIM_SCGC5 |= SIM_SCGC5_PORTB_MASK;
+		// Configure mux for Outputs
+	PORTB_PCR21 = PORT_PCR_MUX(1); // Blue Led; Port B, Pin 21
+	PORTB_PCR22 = PORT_PCR_MUX(1); // Red Led; Port B, Pin 22
+	PORTB_PCR9 = PORT_PCR_MUX(1); // output from PTC7
+	PORTB_PCR23 = PORT_PCR_MUX(1);
 	
-	//SIM_SCGC5 |= SIM_SCGC5_PORTC_MASK; //button sw2
-	//SIM_SCGC5 |= SIM_SCGC5_PORTA_MASK; //button sw3
+	SIM_SCGC5 |= SIM_SCGC5_PORTE_MASK; //LED
+	PORTE_PCR26 = PORT_PCR_MUX(1); // Green Led; Port E, Pin 26
 	
 	//Configure Port Control Register for Inputs with pull enable and pull up resistor
-
-	// Configure mux for Outputs
-	PORTB_PCR21 |= PORT_PCR_MUX(1); // Blue Led; Port B, Pin 21
-	PORTB_PCR22 |= PORT_PCR_MUX(1); // Red Led; Port B, Pin 22
-	PORTE_PCR26 |= PORT_PCR_MUX(1); // Green Led; Port E, Pin 26
-	PORTB_PCR9 |= PORT_PCR_MUX(1); // output from PTC7
-	PORTB_PCR23 |= PORT_PCR_MUX(1);
+	SIM_SCGC5 |= SIM_SCGC5_PORTC_MASK; //button sw2	
+	PORTC_PCR6 = PORT_PCR_MUX(1); // Built in Push Button; Port C, Pin 6
 	
-	PORTC_PCR6 |= PORT_PCR_MUX(1); // Built in Push Button; Port C, Pin 6
+	SIM_SCGC5 |= SIM_SCGC5_PORTA_MASK; //button sw3
 	PORTA_PCR4 = PORT_PCR_MUX(1); //check alternative
 	// Switch the GPIO pins to output mode (Red and Blue LEDs)
 	
-	GPIOB_PDDR |= (1 << 21) | (1 << 22); // Loads data into the direction register
+	GPIOB_PDDR |= (1 << 21) | (1 << 22) | (1 << 9) | (1 << 23); // Loads data into the direction register
 	GPIOE_PDDR |= (1 << 26);
-	GPIOB_PDDR |= (1 << 9);
-	GPIOB_PDDR |= (1 << 23);
+	//GPIOB_PDDR |= (1 << 9);
+	//GPIOB_PDDR |= (1 << 23);
 	 
 	
 	// Turn off the LEDs
@@ -609,12 +724,17 @@ void init_GPIO(void){
 
 	// Set the push buttons as an input
 	
-	GPIOC_PDDR &= ~(1 << 6); 
-	GPIOA_PDDR &= ~(1 << 4); 
+	GPIOC_PDDR |= (0 << 6); 
+	GPIOA_PDDR |= (0 << 4); 
 	
 	// interrupt configuration for SW3(Rising Edge) and SW2 (Either)
-	PORTC_PCR6 |= PORT_PCR_IRQC(11);//sw2 rising only
+	//PORTC_PCR6 = PORT_PCR_IRQC(9);//sw2 rising only
+	//PORTA_PCR4 = PORT_PCR_IRQC(9);//sw2 rising only
 	PORTA_PCR4 |= PORT_PCR_IRQC(9);//sw3 both rising and falling 
+	
+	
+	NVIC_EnableIRQ(PORTA_IRQn);
+	//NVIC_EnableIRQ(PORTC_IRQn);
 	
 	return;
 }
