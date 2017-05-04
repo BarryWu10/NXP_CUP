@@ -7,6 +7,7 @@
  * Modified:  
  */
 
+
 #include "MK64F12.h"
 #include "uart.h"
 #include "pwm.h"
@@ -22,17 +23,19 @@ void plotDerive2(int);
 void calculateDerivatives();
 void turn();
 void delay(int del);
+void initPDB(void);
 
 //initialize stuff
 void init_FTM2(void);
 void init_GPIO(void);
 void init_PIT(void);
 void init_ADC0(void);
-
+void initFTM1(void);
 //interrupts
 void FTM2_IRQHandler(void);
 void PIT1_IRQHandler(void);
 void ADC0_IRQHandler(void);
+void FTM1_IRQHandler(void);
 
 // Default System clock value
 // period = 1/20485760  = 4.8814395e-8
@@ -44,10 +47,21 @@ void ADC0_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define fastSpeed 70
-#define fastTurn 62
+#define fastSpeed 70 //70
+#define fastTurn 67//62
+
 #define slowSpeed 35
 #define slowTurn 30
+
+#define medSpeed 50
+#define medTurn 45
+
+#define noise_cutoff 800
+#define inside_wheel .135
+#define outside_wheel .35
+ // Light and dark area cutoff values
+#define cutoff_L .75
+#define cutoff_D .25
 
 
 /*
@@ -61,15 +75,16 @@ int pixcnt = -2;
 // clkval toggles with each FTM interrupt
 int clkval = 0;
 // line stores the current array of camera data
-int speedLimit;
+int speedLimit = 0;
 int turnLimit;
-
+int brake;
 uint16_t line[128];					//lines
 uint16_t avg_line[128];			//smooth line
 int16_t derive_line[128];		//derive line
 int16_t derive2_line[128];		//second derivative line
 
-float kp = 3.5/40;
+float kp_L = 3.5/45;
+float kp_H = 4.0/45;
 float kd;
 float ki;
 float servoFactor;
@@ -79,59 +94,43 @@ int debugcamdata = 1;
 int capcnt = 0;
 char str[100],str2[100];
 int counter;
-float midpoint, p_midpoint;
-char current_state, previous_state;
+float midpoint, p_midpoint, temp_midpoint;
+char current_state, previous_state, previous_state2, lt_state;
 int s_counter, b_counter, t_counter;
+int max_high, min_low;
+ // Light and dark area cutoff values
 
-int turnOnFast = 0;
-int turnOnSlow = 0;
+int d_area;  // boolean, true if the car is in a dark area.
+int d_counter = 0; //counts how many times the camera thinks it is dark
+int line_lost = 0; // boolean, true if line is lost 
+
+int state = -1;
 
 // ADC0VAL holds the current ADC value
 unsigned short ADC0VAL;
+
+int timer_counter;
 
 int main(void){
 	//initialize all the interrupts
 	initialize();
 	for(;;){
 		
-		while(GPIOC_PDIR == (0<<6)){
+		//while(GPIOC_PDIR == (0<<6)){
 			/*
 			GPIOB_PSOR = (1 << 22);      //sets red to on
 			GPIOE_PSOR = (1 << 26);      //sets green to on
 			GPIOB_PSOR = (1 << 21);      //sets blue to on	
 			*/
-			turnOnFast = !turnOnFast;
-			turnOnSlow = 0;
-		}
+			//speedLimit = 0;
+			//state = -1;
+			//}
+		//if(state == -1){
+			//speedLimit = 0;
+		//}
 		
-		if(turnOnFast & !turnOnSlow){
-			/*
-			GPIOB_PCOR = (1 << 22);      //sets red to on
-			GPIOE_PSOR = (1 << 26);      //sets green to on
-			GPIOB_PSOR = (1 << 21);      //sets blue to on	
-			*/
-			speedLimit = fastSpeed;
-			turnLimit = fastTurn;
-		}
-		else if(turnOnSlow & !turnOnFast){
-			/*
-			GPIOB_PSOR = (1 << 22);      //sets red to on
-			GPIOE_PCOR = (1 << 26);      //sets green to on
-			GPIOB_PSOR = (1 << 21);      //sets blue to on	
-			*/
-			speedLimit = slowSpeed;
-			turnLimit = slowTurn;
-		}
-		else{
-			//SetServoDutyCycle(9.75,50);
-			/*
-			GPIOB_PSOR = (1 << 22);      //sets red to on
-			GPIOE_PSOR = (1 << 26);      //sets green to on
-			GPIOB_PCOR = (1 << 21);      //sets blue to on	
-			*/
-			speedLimit = 0;
-		}
 		
+			
 		
 		
 		
@@ -173,42 +172,47 @@ int main(void){
 	return 0;
 }
 
+void PORTC_IRQHandler(void){ //For switch 2
+	PORTC_ISFR |= PORT_ISFR_ISF_MASK;
+	
+	//while(GPIOC_PDIR == (0<<6)){
+			/*
+			GPIOB_PSOR = (1 << 22);      //sets red to on
+			GPIOE_PSOR = (1 << 26);      //sets green to on
+			GPIOB_PSOR = (1 << 21);      //sets blue to on	
+			*/
+	//		speedLimit = 0;
+		//	state = -1;
+			//}
+		//if(state == -1){
+			//speedLimit = 0;
+		//}
+	return;
+}
+
 void PORTA_IRQHandler(void){ //For switch 3
 	
 	
     //clears the interrupt
 	PORTA_ISFR |= PORT_ISFR_ISF_MASK;
-	turnOnFast = 0;
-	turnOnSlow = !turnOnSlow;
-	
-	
-	if(turnOnFast & !turnOnSlow){
-			/*
-			GPIOB_PCOR = (1 << 22);      //sets red to on
-			GPIOE_PSOR = (1 << 26);      //sets green to on
-			GPIOB_PSOR = (1 << 21);      //sets blue to on	
-			*/
-			speedLimit = fastSpeed;
-			turnLimit = fastTurn;
-		}
-		else if(turnOnSlow & !turnOnFast){
-			/*
-			GPIOB_PSOR = (1 << 22);      //sets red to on
-			GPIOE_PCOR = (1 << 26);      //sets green to on
-			GPIOB_PSOR = (1 << 21);      //sets blue to on	
-			*/
-			speedLimit = slowSpeed;
-			turnLimit = slowTurn;
-		}
-		else{
-			//SetServoDutyCycle(9.75,50);
-			/*
-			GPIOB_PSOR = (1 << 22);      //sets red to on
-			GPIOE_PSOR = (1 << 26);      //sets green to on
-			GPIOB_PCOR = (1 << 21);      //sets blue to on	
-			*/
+	state += 1;
+	if(state == 4){
+		state =0;
+	}
+	if(state == 0){
 			speedLimit = 0;
-		}
+	}else if(state == 1){
+		speedLimit = fastSpeed;
+		turnLimit = fastTurn;
+	}else if(state == 2){
+		speedLimit = medSpeed;
+		turnLimit = medTurn;
+	}
+	else{
+		speedLimit = slowSpeed;
+		turnLimit = slowTurn;
+	}
+	
 	
 	return;
 }
@@ -329,7 +333,7 @@ void initialize()
 	init_FTM2(); // To generate CLK, SI, and trigger ADC
 	init_ADC0();
 	init_PIT();	// To trigger camera read based on integration time
-	
+	initFTM1();
 }
 
 /* ADC0 Conversion Complete ISR  */
@@ -414,26 +418,29 @@ void turn(void){
 
   //derive line exist
   for(i=0; i < 50; i++){
-
+		//find max left and index
 		if ( derive_line[64-i] > R_high){
 			max_R = 64-i;
 			R_high = derive_line[64-i];
 		}
+		//find min left and index
 		if ( derive_line[64-i] < R_low){
 			min_R = 64-i;
 			R_low = derive_line[64-i];
 		}
+		//find max right and index
 		if ( derive_line[64+i] > L_high){
 			max_L = 64+i;
 			L_high = derive_line[64+i];
 		}
+		//find min left and index
 		if ( derive_line[64+i] < L_low){
 			min_L = 64+i;
 			L_low = derive_line[64+i];
 		}
 	}
 	
-	if(R_high < 800 && L_high < 800 && R_low < -800 && L_low < -800){
+/*	if(R_high < 800 && L_high < 800 && R_low < -800 && L_low < -800){
 	p_midpoint = midpoint;
 		if (previous_state == 'l'){
 			midpoint = 59;
@@ -443,7 +450,8 @@ void turn(void){
 			midpoint = 64;
 		}
 	}
-
+*/
+	//if largest peak @ 64+ or lowest peak @ 64-
 	if ((R_high < L_high) || (R_low < L_low)){
 		midpoint = p_midpoint;
 	}/*
@@ -457,49 +465,119 @@ void turn(void){
 			midpoint = 64;
 		}
 	}*/
+	
+	//otherwise calculate the midpoint
 	else{
 		p_midpoint = midpoint;
 		midpoint = (float)(max_R+min_L)/2.0;
 	}
-	servoFactor = (float) (((midpoint - 64.0)*kp));
+
+	//calculate the servo factor using error
+	servoFactor = (float) (((midpoint - 64.0)*kp_L));
+	
+	//if midpoint > 66
 	if ( midpoint > 66){
+		previous_state2 = previous_state;
 		previous_state = current_state;
 		current_state = 'l';
-			if (midpoint > 66){
-				if ( servoFactor > 1.75) {
-					SetServoDutyCycle(8,50);
-					SetMotorDutyCycle(turnLimit-(.35*turnLimit*servoFactor),turnLimit+(.135*turnLimit*servoFactor), 10000, 1);
-				}else{
+		//clear the PDB timer
+		//SIM_SCGC6 &= ~SIM_SCGC6_PDB_MASK;
+		if ( midpoint > 68) {
+			if ( servoFactor > 1.79 ) {
+					servoFactor = 1.79;
+					brake = 1;
+				if (timer_counter>0){
+					SetMotorDutyCycle(80,80, 10000, 0);
 					SetServoDutyCycle(9.75 - servoFactor, 50);
-					SetMotorDutyCycle(turnLimit-(.35*turnLimit*servoFactor),turnLimit+(.135*turnLimit*servoFactor), 10000, 1);
+				} else{
+					SetServoDutyCycle(7.94,50);
+					SetMotorDutyCycle(turnLimit-(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), 10000, 1);
 				}
-			}else{
+			}else if (servoFactor > .6) {
+					brake = 1;
+				if (timer_counter>0){
+					SetMotorDutyCycle(80,80, 10000, 0);
 					SetServoDutyCycle(9.75 - servoFactor, 50);
-					SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
+		}else{
+					brake = 0;
+					timer_counter = 0;
+					SetServoDutyCycle(9.75 - servoFactor, 50);
+					SetMotorDutyCycle(turnLimit-(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), 10000, 1);
+				}
+			}else {
+				brake = 0;
+				timer_counter = 0;
+			SetServoDutyCycle(9.75 - servoFactor, 50);
+			SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
+			}
+		}
+			else {
+				brake = 0;
+			SetServoDutyCycle(9.75 - servoFactor, 50);
+			SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
 			}
 		}else if ( midpoint < 62){
 		//turns right
+		previous_state2 = previous_state;
 		previous_state = current_state;
 		current_state = 'r';
-		if ( midpoint < 62){
-			if ( servoFactor < -1.75) {
-				SetServoDutyCycle(11.5,50);
-				SetMotorDutyCycle(turnLimit-(.135*turnLimit*servoFactor),turnLimit+(.35*turnLimit*servoFactor), 10000, 1);
-			}
-			else{
+		//clear the PDB timer
+		//SIM_SCGC6 &= ~SIM_SCGC6_PDB_MASK;
+		// harder turn
+		if ( midpoint < 60){
+			servoFactor = (float) (((midpoint - 64.0)*kp_H));
+			if ( servoFactor < -1.79) {
+				brake = 1;
+				servoFactor = -1.79;
+				if (timer_counter>0){
+					SetMotorDutyCycle(80,80, 10000, 0);
+					SetServoDutyCycle(9.75 - servoFactor, 50);
+				} else{
+					brake = 0;
+					timer_counter = 0;
+					SetServoDutyCycle(11.54,50); 
+					SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), 10000, 1);
+				}}	else if ( servoFactor < -.6 ) {
+					brake = 1;
+					if (timer_counter>0){
+					SetMotorDutyCycle(80,80, 10000, 0);
+					SetServoDutyCycle(9.75 - servoFactor, 50);
+				} else{
+					brake = 0;
+					timer_counter = 0;
 				SetServoDutyCycle(9.75 - servoFactor, 50);
-				SetMotorDutyCycle(turnLimit-(.135*turnLimit*servoFactor),turnLimit+(.35*turnLimit*servoFactor), 10000, 1);
-				}
-		}else{
+				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), 10000, 1);
+			}
+		} else {
+				brake = 0;
+				timer_counter = 0;
+				SetServoDutyCycle(9.75 - servoFactor, 50);
+				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), 10000, 1);
+		}
+	}else{
+			brake = 0;
 			SetServoDutyCycle(9.75 - servoFactor, 50);
 			SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
 		}
-		}
+	}
 	else{
+		
+		if(previous_state != 's'){
+			if (timer_counter == 0){
+				FTM1_CNT &= ~(FTM_CNT_COUNT_MASK);
+				timer_counter = 1;
+				brake = 0;
+			}
+		}
+		previous_state2 = previous_state;
+		previous_state = current_state;
+		current_state = 's';
+		t_counter = 0;
 		SetServoDutyCycle(9.75,50);
 		SetMotorDutyCycle(speedLimit,speedLimit, 10000, 1);
 	}
 	}
+
 
 void calculateDerivatives(void){
 	/*
@@ -543,6 +621,18 @@ void calculateDerivatives(void){
 	derive2_line[127] = (derive_line[127] - derive_line[126]);
 	
 }	
+/*
+void PDB0_IRQHandler(void){ //For PDB timer
+	
+	PDB0_SC &= ~PDB_SC_PDBIF_MASK; //clear the interrupt
+	//GPIOB_PTOR ^= (1<<22); //toggle red LED 
+	if (timer_counter > 0) {    
+    timer_counter += 1;
+	} else {}
+
+	return;
+}
+*/
 
 /* PIT0 determines the integration period
 *		When it overflows, it triggers the clock logic from
@@ -728,13 +818,13 @@ void init_GPIO(void){
 	GPIOA_PDDR |= (0 << 4); 
 	
 	// interrupt configuration for SW3(Rising Edge) and SW2 (Either)
-	//PORTC_PCR6 = PORT_PCR_IRQC(9);//sw2 rising only
+	PORTC_PCR6 = PORT_PCR_IRQC(9);//sw2 rising only
 	//PORTA_PCR4 = PORT_PCR_IRQC(9);//sw2 rising only
 	PORTA_PCR4 |= PORT_PCR_IRQC(9);//sw3 both rising and falling 
 	
 	
 	NVIC_EnableIRQ(PORTA_IRQn);
-	//NVIC_EnableIRQ(PORTC_IRQn);
+	NVIC_EnableIRQ(PORTC_IRQn);
 	
 	return;
 }
@@ -776,4 +866,53 @@ void init_ADC0(void) {
 	// Enable NVIC interrupt
     //INSERT CODE HERE
 	NVIC_EnableIRQ(ADC0_IRQn);
+}
+
+void initFTM1(void){
+	//Enable clock for FTM module (use FTM0)
+	SIM_SCGC6 |= SIM_SCGC6_FTM1_MASK; // X
+	
+	
+
+	//turn off FTM Mode to write protection
+	// bit 2 (WPDIS) is 1 for write disable, 0 for write enable // X
+	FTM1_MODE |= 0x05; // XY
+	
+	//divide the input clock down by 128,  
+	FTM1_SC |= FTM_SC_PS(7);
+	
+	
+	//reset the counter to zero
+	FTM1_CNT = 0;
+	
+	//Set the overflow rate
+	//(Sysclock/128)- clock after prescaler
+	//(Sysclock/128)/1000- slow down by a factor of 1000 to go from
+	//Mhz to Khz, then 1/KHz = msec
+	//Every 1msec, the FTM counter will set the overflow flag (TOF) and 
+	FTM1->MOD = (DEFAULT_SYSTEM_CLOCK/(1<<7))/10000;
+	
+	//Select the System Clock 
+	FTM1_SC |= FTM_SC_CLKS(1);
+
+	//Enable the interrupt mask. Timer overflow Interrupt enable
+	FTM1_SC |= FTM_SC_TOIE_MASK;
+	
+	NVIC_EnableIRQ(FTM1_IRQn);
+	
+	return;
+}
+
+void FTM1_IRQHandler(void){ //For FTM timer
+	//clear FTM interrupt
+	FTM0_SC &= ~(FTM_SC_TOF_MASK);
+    //if timer variable is initiated, increment timer
+	if (brake) {
+		if (timer_counter > 0){
+			timer_counter -=0;
+	}
+}else if (timer_counter>0){
+	timer_counter+=1;
+}
+	return;
 }
