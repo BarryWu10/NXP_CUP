@@ -36,6 +36,9 @@ void FTM2_IRQHandler(void);
 void PIT1_IRQHandler(void);
 void ADC0_IRQHandler(void);
 void FTM1_IRQHandler(void);
+void PORTC_IRQHandler(void);
+void PORTA_IRQHandler(void)
+	
 
 // Default System clock value
 // period = 1/20485760  = 4.8814395e-8
@@ -181,12 +184,12 @@ void PORTC_IRQHandler(void){ //For switch 2
 			GPIOE_PSOR = (1 << 26);      //sets green to on
 			GPIOB_PSOR = (1 << 21);      //sets blue to on	
 			*/
-	//		speedLimit = 0;
-		//	state = -1;
+			speedLimit = 0;
+			state = -1;
 			//}
-		//if(state == -1){
-			//speedLimit = 0;
-		//}
+		if(state == -1){
+			speedLimit = 0;
+		}
 	return;
 }
 
@@ -336,7 +339,7 @@ void initialize()
 	initFTM1();
 }
 
-/* ADC0 Conversion Complete ISR  */
+/*?ADC0?Conversion?Complete?ISR? */
 void ADC0_IRQHandler(void) {
 	// Reading ADC0_RA clears the conversion complete flag
 	//INSERT CODE HERE
@@ -710,7 +713,7 @@ void init_FTM2(){
 	FTM2_C0SC &= ~(FTM_CnSC_ELSA_MASK);
 	FTM2_C0SC |= FTM_CnSC_ELSB_MASK;
 	
-	// Enable hardware trigger from FTM2
+	//?Enable?hardware?trigger?from?FTM2
 	//INSERT CODE HERE
 	//FTM2_SYNC |= FTM_SYNCONF_HWTRIGMODE_MASK; //??????
 	FTM2_EXTTRIG |= FTM_EXTTRIG_INITTRIGEN_MASK;
