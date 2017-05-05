@@ -507,6 +507,7 @@ void turn(void){
 		if (servoFactor > brake_servo){
 			if ( timer_counter > 5000){
 				brake = 1;
+				FTM1_CNT &= ~(FTM_CNT_COUNT_MASK);
 				// not linear
 				brake_time = timer_counter *.2;
 			}else {
@@ -518,14 +519,9 @@ void turn(void){
 			}
 			// if brake boolean is on brake until the brake timer hits 0 then brake = 0
 				if (brake){
-					b_midpoint = midpoint;
+				b_midpoint = midpoint;
 				SetMotorDutyCycle(brake_speed, brake_speed, freq, 0);
 				SetServoDutyCycle(9.75 - servoFactor, 50);
-			}else{
-				brake = 0;
-				timer_counter = 0;
-				SetServoDutyCycle(9.75 - servoFactor, 50);
-				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
 			}} else{
 			// Its not a hard turn just do a normal turn
 			SetServoDutyCycle(9.75 - servoFactor, 50);
@@ -558,13 +554,8 @@ void turn(void){
 				b_midpoint = midpoint;
 				SetMotorDutyCycle(brake_speed, brake_speed, freq, 0);
 				SetServoDutyCycle(9.75 - servoFactor, 50);
-			}else{
-			brake = 0;
-				timer_counter = 0;
-			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
 			}
-		} else{
+		 else{
 			// Its not a hard turn just do a normal turn
 			SetServoDutyCycle(9.75 - servoFactor, 50);
 			SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
@@ -580,6 +571,7 @@ void turn(void){
 		FTM1_CNT &= ~(FTM_CNT_COUNT_MASK);
 		timer_counter = 1;
 		brake = 0;
+		brake_time = 0;
 	}
 	// goes straight
 	SetServoDutyCycle(9.75,50);
@@ -880,18 +872,20 @@ void FTM1_IRQHandler(void){ //For FTM timer
     //if timer variable is initiated, increment timer
 	//
 	if (brake) {
-		if (brake_time > 0){
+		if (brake_time > 1000){
 			brake_time -=1;
 	} else{
 		brake_time = 0;
 		brake = 0;
+		timer_counter = 0;
 	}
 }else if (timer_counter>0){
 	if (timer_counter < 10000) {
 			timer_counter+=1;
 			brake = 0;
+			brake_time = 0;
 	}
-
 }
+
 	return;
 }
