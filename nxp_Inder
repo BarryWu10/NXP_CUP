@@ -440,6 +440,7 @@ void turn(void){
 		}
 	}
 
+	// threshold values for noise, need to be calibrated
 	if(R_high < 500 && L_high < 500 && R_low > -500 && L_low > -500){
 		noise = 1;
 	}
@@ -576,25 +577,7 @@ void calculateDerivatives(void){
 	derive2_line[127] = (derive_line[127] - derive_line[126]);
 
 }
-/*
-void PDB0_IRQHandler(void){ //For PDB timer
 
-	PDB0_SC &= ~PDB_SC_PDBIF_MASK; //clear the interrupt
-	//GPIOB_PTOR ^= (1<<22); //toggle red LED
-	if (timer_counter > 0) {
-    timer_counter += 1;
-	} else {}
-	return;
-}
-*/
-
-/* PIT0 determines the integration period
-*		When it overflows, it triggers the clock logic from
-*		FTM2. Note the requirement to set the MOD register
-* 	to reset the FTM counter because the FTM counter is
-*		always counting, I am just enabling/disabling FTM2
-*		interrupts to control when the line capture occurs
-*/
 void PIT0_IRQHandler(void){
 	if (debugcamdata) {
 		// Increment capture counter so that we can only
