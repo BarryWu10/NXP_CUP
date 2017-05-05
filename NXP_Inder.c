@@ -71,6 +71,8 @@ void PORTA_IRQHandler(void);
 #define cutoff_D .25
 #define brake_servo 1
 #define freq 10000
+#define brake_servo_r -1
+#define noise_cutoff_L -100
 /*
 #define speedLimit 70// 75
 #define turnLimit 62//65
@@ -452,9 +454,9 @@ void turn(void){
 	}
 
 	// threshold values for noise, need to be calibrated
-	if(R_high < noise_cutoff && L_high < noise_cutoff && R_low > -(noise_cutoff) && L_low > -(noise_cutoff)){
+	if((R_high < noise_cutoff) && ( L_high < noise_cutoff) && (R_low > (noise_cutoff_L)) && (L_low > (noise_cutoff_L))){
 		noise = 1;
-
+		cross = 0;
 	}
 
 	//if largest peak @ 64+ or lowest peak @ 64-
@@ -547,7 +549,7 @@ void turn(void){
 		previous_state = current_state;
 		current_state = 'r';
 		// if the turn is hard enough to check for braking
-		if (servoFactor < -(brake_servo)){
+		if (servoFactor < (brake_servo_r)){
 			if ( timer_counter > 5000){
 				brake = 1;
 				// not linear needs to be changed
@@ -579,7 +581,7 @@ void turn(void){
 	previous_state = current_state;
 	current_state = 's';
 	// turn on timer if its not on already
-	if (timer_counter<1){
+	if (timer_counter <1){
 		FTM1_CNT &= ~(FTM_CNT_COUNT_MASK);
 		timer_counter = 1;
 		brake = 0;
