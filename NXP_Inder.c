@@ -53,26 +53,29 @@ void PORTA_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define fastSpeed 80 //70
-#define fastTurn 75//62
-
-#define slowSpeed 35
-#define slowTurn 30
+#define fastSpeed 70 //70
+#define fastTurn 65//65
 
 #define medSpeed 60
 #define medTurn 55
 
+#define slowSpeed 50
+#define slowTurn 45
+
 #define brake_speed 70
-#define noise_cutoff 100
-#define inside_wheel .135
-#define outside_wheel .35
+#define inside_wheel .35
+#define outside_wheel .135
  // Light and dark area cutoff values
 #define cutoff_L .75
 #define cutoff_D .25
 #define brake_servo 1
 #define freq 10000
 #define brake_servo_r -1
-#define noise_cutoff_L -100
+#define noise_cutoff_L -300
+#define noise_cutoff 300
+#define noise_cutoff_High 4500
+#define noise_cutoff_High_L -4500
+
 /*
 #define speedLimit 70// 75
 #define turnLimit 62//65
@@ -215,26 +218,26 @@ void PORTA_IRQHandler(void){ //For switch 3
 			speedLimit = 0;
 		GPIOB_PCOR = (1 << 22);      //sets red to on
   GPIOE_PCOR = (1 << 26);      //sets green to on
-  GPIOB_PCOR = (1 << 21);      //sets blue to on	
+  GPIOB_PCOR = (1 << 21);      //sets blue to on
 	}else if(state == 1){
 		speedLimit = fastSpeed;
 		turnLimit = fastTurn;
 		GPIOB_PCOR = (1 << 22);      //sets red to on
   GPIOE_PSOR = (1 << 26);      //sets green to off
-  GPIOB_PSOR = (1 << 21);      //sets blue to off	
+  GPIOB_PSOR = (1 << 21);      //sets blue to off
 	}else if(state == 2){
 		speedLimit = medSpeed;
 		turnLimit = medTurn;
 		GPIOB_PSOR = (1 << 22);      //sets red to off
   GPIOE_PCOR = (1 << 26);      //sets green to on
-  GPIOB_PSOR = (1 << 21);      //sets blue to off	
+  GPIOB_PSOR = (1 << 21);      //sets blue to off
 	}
 	else{
 		speedLimit = slowSpeed;
 		turnLimit = slowTurn;
 		GPIOB_PSOR = (1 << 22);      //sets red to off
   GPIOE_PSOR = (1 << 26);      //sets green to off
-  GPIOB_PCOR = (1 << 21);      //sets blue to on	
+  GPIOB_PCOR = (1 << 21);      //sets blue to on
 	}
 
 
@@ -360,7 +363,7 @@ void initialize()
 	initFTM1();
 	GPIOB_PCOR = (1 << 22);      //sets red to on
   GPIOE_PCOR = (1 << 26);      //sets green to on
-  GPIOB_PCOR = (1 << 21);      //sets blue to on	
+  GPIOB_PCOR = (1 << 21);      //sets blue to on
 }
 
 /* ADC0 Conversion Complete ISR  */
@@ -449,22 +452,22 @@ void turn(void){
   //derive line exist
   for(i=0; i < 50; i++){
 		//find max left and index
-		if ( derive_line[64-i] > R_high){
+		if ( (derive_line[64-i] > R_high) && (derive_line[64-i] < noise_cutoff_High)){
 			max_R = 64-i;
 			R_high = derive_line[64-i];
 		}
 		//find min left and index
-		if ( derive_line[64-i] < R_low){
+		if ( (derive_line[64-i] < R_low) && (derive_line[64-1] < noise_cutoff_High_L)){
 			min_R = 64-i;
 			R_low = derive_line[64-i];
 		}
 		//find max right and index
-		if ( derive_line[64+i] > L_high){
+		if ( (derive_line[64+i] > L_high) && (derive_line[64+i] < noise_cutoff_High)){
 			max_L = 64+i;
 			L_high = derive_line[64+i];
 		}
 		//find min left and index
-		if ( derive_line[64+i] < L_low){
+		if ( (derive_line[64+i] < L_low) && (derive_line[64+1] < noise_cutoff_High_L)){
 			min_L = 64+i;
 			L_low = derive_line[64+i];
 		}
@@ -546,24 +549,24 @@ void turn(void){
 				brake_time = 0;
 				//not braking, because it hasn't sped up enough set duty cycles
 				SetServoDutyCycle(9.75 - servoFactor, 50);
-				SetMotorDutyCycle(turnLimit+(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), freq, 1);
+				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
 			}
 			// if brake boolean is on brake until the brake timer hits 0 then brake = 0
 				if (brake){
 					GPIOB_PTOR = (1 << 22);      //sets red to on
 				GPIOE_PTOR = (1 << 26);      //sets green to on
-				GPIOB_PTOR = (1 << 21);      //sets blue to on		
+				GPIOB_PTOR = (1 << 21);      //sets blue to on
 				b_midpoint = midpoint;
 				SetMotorDutyCycle(brake_speed, brake_speed, freq, 0);
 				SetServoDutyCycle(9.75 - servoFactor, 50);
 				GPIOB_PTOR = (1 << 22);      //sets red to on
 				GPIOE_PTOR = (1 << 26);      //sets green to on
-				GPIOB_PTOR = (1 << 21);      //sets blue to on	
+				GPIOB_PTOR = (1 << 21);      //sets blue to on
 				}
 			} else{
 			// Its not a hard turn just do a normal turn
 			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit+(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), freq, 1);
+			SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
 		}
 	} else if ( midpoint < 62){
 		// turns right
@@ -590,24 +593,25 @@ void turn(void){
 				brake_time = 0;
 				//not braking, because it hasn't sped up enough set duty cycles
 				SetServoDutyCycle(9.75 - servoFactor, 50);
-				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
+				// left wheel is outside, so it increases in speed because servoFactor is negative, and inside wheel decreses
+				SetMotorDutyCycle(turnLimit-(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), freq, 1);
 			}
 			// if brake boolean is on brake until the brake timer hits 0, then brake = 0
 			// only executes if brake is set to 1
 			if (brake){
 				GPIOB_PTOR = (1 << 22);      //sets red to on
 				GPIOE_PTOR = (1 << 26);      //sets green to on
-				GPIOB_PTOR = (1 << 21);      //sets blue to on	
+				GPIOB_PTOR = (1 << 21);      //sets blue to on
 				b_midpoint = midpoint;
 				SetMotorDutyCycle(brake_speed, brake_speed, freq, 0);
 				SetServoDutyCycle(9.75 - servoFactor, 50);
 				GPIOB_PTOR = (1 << 22);      //sets red to on
 				GPIOE_PTOR = (1 << 26);      //sets green to on
-				GPIOB_PTOR = (1 << 21);      //sets blue to on	
+				GPIOB_PTOR = (1 << 21);      //sets blue to on
 				}
 			}else{
 				SetServoDutyCycle(9.75 - servoFactor, 50);
-				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
+				SetMotorDutyCycle(turnLimit-(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), freq, 1);
 			}
 	} else {
 	// Straight
