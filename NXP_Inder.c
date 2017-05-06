@@ -71,20 +71,20 @@ void PORTA_IRQHandler(void);
 #define brake_servo 1
 #define freq 10000
 #define brake_servo_r -1
-#define noise_cutoff_L -300
-#define noise_cutoff 300
+#define noise_cutoff_L -700
+#define noise_cutoff 700
 #define noise_cutoff_High 4500
 #define noise_cutoff_High_L -4500
 
 #define brake_coeff_M .12
-#define s_time_M 400
-#define min_brake_M 55
+#define s_time_M 350
+#define min_brake_M 45
 #define brake_coeff2_M .125
 #define s_time2_M 800
 
 #define brake_coeff_F .14
-#define s_time_F 400
-#define min_brake_F 55
+#define s_time_F 300
+#define min_brake_F 45
 #define brake_coeff2_F .175
 #define s_time2_F 800
 
