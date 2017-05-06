@@ -53,16 +53,16 @@ void PORTA_IRQHandler(void);
 //	(camera clk is the mod value set in FTM2)
 #define INTEGRATION_TIME .0075f
 
-#define fastSpeed 50 //70
-#define fastTurn 45//62
+#define fastSpeed 80 //70
+#define fastTurn 75//62
 
 #define slowSpeed 35
 #define slowTurn 30
 
-#define medSpeed 50
-#define medTurn 45
+#define medSpeed 60
+#define medTurn 55
 
-#define brake_speed 0
+#define brake_speed 70
 #define noise_cutoff 100
 #define inside_wheel .135
 #define outside_wheel .35
@@ -71,6 +71,8 @@ void PORTA_IRQHandler(void);
 #define cutoff_D .25
 #define brake_servo 1
 #define freq 10000
+#define brake_servo_r -1
+#define noise_cutoff_L -100
 /*
 #define speedLimit 70// 75
 #define turnLimit 62//65
@@ -95,6 +97,8 @@ float kp_H = 4.0/45;
 float kd;
 float ki;
 float servoFactor;
+int brake_set;
+int brake_snapshot;
 // These variables are for streaming the camera
 //	 data over UART
 int debugcamdata = 1;
@@ -209,16 +213,28 @@ void PORTA_IRQHandler(void){ //For switch 3
 	}
 	if(state == 0){
 			speedLimit = 0;
+		GPIOB_PCOR = (1 << 22);      //sets red to on
+  GPIOE_PCOR = (1 << 26);      //sets green to on
+  GPIOB_PCOR = (1 << 21);      //sets blue to on	
 	}else if(state == 1){
 		speedLimit = fastSpeed;
 		turnLimit = fastTurn;
+		GPIOB_PCOR = (1 << 22);      //sets red to on
+  GPIOE_PSOR = (1 << 26);      //sets green to off
+  GPIOB_PSOR = (1 << 21);      //sets blue to off	
 	}else if(state == 2){
 		speedLimit = medSpeed;
 		turnLimit = medTurn;
+		GPIOB_PSOR = (1 << 22);      //sets red to off
+  GPIOE_PCOR = (1 << 26);      //sets green to on
+  GPIOB_PSOR = (1 << 21);      //sets blue to off	
 	}
 	else{
 		speedLimit = slowSpeed;
 		turnLimit = slowTurn;
+		GPIOB_PSOR = (1 << 22);      //sets red to off
+  GPIOE_PSOR = (1 << 26);      //sets green to off
+  GPIOB_PCOR = (1 << 21);      //sets blue to on	
 	}
 
 
@@ -342,6 +358,9 @@ void initialize()
 	init_ADC0();
 	init_PIT();	// To trigger camera read based on integration time
 	initFTM1();
+	GPIOB_PCOR = (1 << 22);      //sets red to on
+  GPIOE_PCOR = (1 << 26);      //sets green to on
+  GPIOB_PCOR = (1 << 21);      //sets blue to on	
 }
 
 /* ADC0 Conversion Complete ISR  */
@@ -419,13 +438,16 @@ void turn(void){
 	int max_R, max_L, min_R, min_L;
 	int L_high, L_low, R_high, R_low;
 	int noise, line_lost;
+	// initialize ints to 0
+	noise = 0;
+	line_lost = 0;
 	L_high = 0;
 	L_low = 0;
 	R_high = 0;
 	R_low = 0;
 
   //derive line exist
-  for(i=0; i < 55; i++){
+  for(i=0; i < 50; i++){
 		//find max left and index
 		if ( derive_line[64-i] > R_high){
 			max_R = 64-i;
@@ -449,26 +471,29 @@ void turn(void){
 	}
 
 	// threshold values for noise, need to be calibrated
-	if(R_high < noise_cutoff && L_high < noise_cutoff && R_low > -(noise_cutoff) && L_low > -(noise_cutoff)){
+	if((R_high < noise_cutoff) && ( L_high < noise_cutoff) && (R_low > (noise_cutoff_L)) && (L_low > (noise_cutoff_L))){
 		noise = 1;
+		cross = 0;
 	}
 
 	//if largest peak @ 64+ or lowest peak @ 64-
+	// if the line is lost and there is no noise, continue the turn by setting cross to 1.
 	if ((R_high < L_high) || (R_low < L_low)){
 		line_lost = 1;
+		// no noise, but line is lost
 		if (noise == 0){
 			midpoint = p_midpoint;
-			cross = 0;
-			line_lost = 0;
+			line_lost = 1;
+			cross = 1;
 		}
 	}
-
+	// if there is no noise, and line is not lost
 	if (noise == 0 && line_lost == 0){
 		p_midpoint = midpoint;
 		midpoint = (float)(max_R+min_L)/2.0;
 		cross = 0;
 	} else {
-		// it found a cross
+		// it found a cross or line was lost
 		if (cross == 0){
 			if ( previous_state == 'l'){
 				midpoint = 60;
@@ -496,6 +521,7 @@ void turn(void){
 // FOCUS ON HERE!
 	if ( midpoint > 66){
 		//turn left
+
 		// make sure servo isn't out of range
 		if (servoFactor > 1.79){
 			servoFactor = 1.79;
@@ -504,32 +530,40 @@ void turn(void){
 		previous_state2 = previous_state;
 		previous_state = current_state;
 		current_state = 'l';
+		// if the turn is hard enough
 		if (servoFactor > brake_servo){
-			if ( timer_counter > 5000){
+			// if the
+			if ( timer_counter > 200){
+				if (brake == 0){
+						brake_time = timer_counter *.2;
+				}
 				brake = 1;
+				FTM1_CNT &= ~(FTM_CNT_COUNT_MASK);
 				// not linear
-				brake_time = timer_counter *.2;
 			}else {
 				brake = 0;
 				timer_counter = 0;
+				brake_time = 0;
 				//not braking, because it hasn't sped up enough set duty cycles
 				SetServoDutyCycle(9.75 - servoFactor, 50);
-				SetMotorDutyCycle(turnLimit-(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), freq, 1);
+				SetMotorDutyCycle(turnLimit+(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), freq, 1);
 			}
 			// if brake boolean is on brake until the brake timer hits 0 then brake = 0
 				if (brake){
-					b_midpoint = midpoint;
+					GPIOB_PTOR = (1 << 22);      //sets red to on
+				GPIOE_PTOR = (1 << 26);      //sets green to on
+				GPIOB_PTOR = (1 << 21);      //sets blue to on		
+				b_midpoint = midpoint;
 				SetMotorDutyCycle(brake_speed, brake_speed, freq, 0);
 				SetServoDutyCycle(9.75 - servoFactor, 50);
-			}else{
-				brake = 0;
-				timer_counter = 0;
-				SetServoDutyCycle(9.75 - servoFactor, 50);
-				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
-			}} else{
+				GPIOB_PTOR = (1 << 22);      //sets red to on
+				GPIOE_PTOR = (1 << 26);      //sets green to on
+				GPIOB_PTOR = (1 << 21);      //sets blue to on	
+				}
+			} else{
 			// Its not a hard turn just do a normal turn
 			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit-(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), freq, 1);
+			SetMotorDutyCycle(turnLimit+(outside_wheel*turnLimit*servoFactor),turnLimit+(inside_wheel*turnLimit*servoFactor), freq, 1);
 		}
 	} else if ( midpoint < 62){
 		// turns right
@@ -541,52 +575,59 @@ void turn(void){
 		previous_state2 = previous_state;
 		previous_state = current_state;
 		current_state = 'r';
-		if (servoFactor > brake_servo){
-			if ( timer_counter > 5000){
+		// if the turn is hard enough to check for braking
+		if (servoFactor < (brake_servo_r)){
+			if ( timer_counter > 200){
+				if (brake == 0){
+					brake_time = timer_counter *.2;
+				}
 				brake = 1;
+				FTM1_CNT &= ~(FTM_CNT_COUNT_MASK);
 				// not linear needs to be changed
-				brake_time = timer_counter *.2;
 			}else {
 				brake = 0;
 				timer_counter = 0;
+				brake_time = 0;
 				//not braking, because it hasn't sped up enough set duty cycles
 				SetServoDutyCycle(9.75 - servoFactor, 50);
 				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
 			}
 			// if brake boolean is on brake until the brake timer hits 0, then brake = 0
+			// only executes if brake is set to 1
 			if (brake){
+				GPIOB_PTOR = (1 << 22);      //sets red to on
+				GPIOE_PTOR = (1 << 26);      //sets green to on
+				GPIOB_PTOR = (1 << 21);      //sets blue to on	
 				b_midpoint = midpoint;
 				SetMotorDutyCycle(brake_speed, brake_speed, freq, 0);
 				SetServoDutyCycle(9.75 - servoFactor, 50);
+				GPIOB_PTOR = (1 << 22);      //sets red to on
+				GPIOE_PTOR = (1 << 26);      //sets green to on
+				GPIOB_PTOR = (1 << 21);      //sets blue to on	
+				}
 			}else{
-			brake = 0;
-				timer_counter = 0;
-			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
+				SetServoDutyCycle(9.75 - servoFactor, 50);
+				SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
 			}
-		} else{
-			// Its not a hard turn just do a normal turn
-			SetServoDutyCycle(9.75 - servoFactor, 50);
-			SetMotorDutyCycle(turnLimit-(inside_wheel*turnLimit*servoFactor),turnLimit+(outside_wheel*turnLimit*servoFactor), freq, 1);
-	}
-} else {
+	} else {
 	// Straight
 	// set states for other code
 	previous_state2 = previous_state;
 	previous_state = current_state;
 	current_state = 's';
 	// turn on timer if its not on already
-	if (timer_counter<1){
+	if (timer_counter <1){
 		FTM1_CNT &= ~(FTM_CNT_COUNT_MASK);
 		timer_counter = 1;
 		brake = 0;
+		brake_time = 0;
 	}
 	// goes straight
 	SetServoDutyCycle(9.75,50);
 	SetMotorDutyCycle(speedLimit,speedLimit, freq, 1);
 }
-
 }
+
 
 
 void calculateDerivatives(void){
@@ -603,13 +644,14 @@ void calculateDerivatives(void){
 	}
 	derive_line[126] = (avg_line[127] - avg_line[125])/2;
 	derive_line[127] = (avg_line[127] - avg_line[126]);
+	/*
 	derive2_line[0] = derive_line[1] - derive_line[0];
 	for(i = 2; i < 127; i++ ){
 		derive2_line[i-1] = ((derive_line[i+1] - derive_line[i-1])/2);
 	}
 	derive2_line[126] = (derive_line[127] - derive_line[125])/2;
 	derive2_line[127] = (derive_line[127] - derive_line[126]);
-
+	*/
 }
 
 void PIT0_IRQHandler(void){
@@ -718,7 +760,7 @@ void init_PIT(void){
 	// PIT clock frequency is the system clock
 	// Load the value that the timer will count down from
 	//INSERT CODE HERE
-	PIT_LDVAL0 = (uint32_t)((2.5*INTEGRATION_TIME) * DEFAULT_SYSTEM_CLOCK);
+	PIT_LDVAL0 = (uint32_t)((2.0*INTEGRATION_TIME) * DEFAULT_SYSTEM_CLOCK);
 
 	// Enable timer interrupts
 	//INSERT CODE HERE
@@ -861,7 +903,7 @@ void initFTM1(void){
 	//(Sysclock/128)/1000- slow down by a factor of 1000 to go from
 	//Mhz to Khz, then 1/KHz = msec
 	//Every 1msec, the FTM counter will set the overflow flag (TOF) and
-	FTM1->MOD = (DEFAULT_SYSTEM_CLOCK/(1<<7))/10000;
+	FTM1->MOD = (DEFAULT_SYSTEM_CLOCK/(1<<7))/1000;
 
 	//Select the System Clock
 	FTM1_SC |= FTM_SC_CLKS(1);
@@ -876,22 +918,24 @@ void initFTM1(void){
 
 void FTM1_IRQHandler(void){ //For FTM timer
 	//clear FTM interrupt
-	FTM0_SC &= ~(FTM_SC_TOF_MASK);
+	FTM1_SC &= ~(FTM_SC_TOF_MASK);
     //if timer variable is initiated, increment timer
 	//
 	if (brake) {
-		if (brake_time > 0){
+		if (brake_time > 75){
 			brake_time -=1;
 	} else{
 		brake_time = 0;
 		brake = 0;
+		timer_counter = 0;
 	}
-}else if (timer_counter>0){
-	if (timer_counter < 10000) {
-			timer_counter+=1;
-			brake = 0;
+}else{
+	 if (timer_counter>0 && timer_counter < 1000){
+		 timer_counter += 1;
+		 brake = 0;
+		 brake_time = 0;
 	}
-
 }
+
 	return;
 }
